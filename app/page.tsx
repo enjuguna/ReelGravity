@@ -27,9 +27,20 @@ const ENGINE_FRICTION_AIR = 0.02;
 const ENGINE_DENSITY = 0.0015;
 
 function parseRuntime(text: string): HardFilters {
-  const max = text.match(/(?:under|below|at most|<|<=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
-  const between = text.match(/between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*minutes?/i);
-  return between ? { runtimeMin: Number(between[1]), runtimeMax: Number(between[2]) } : max ? { runtimeMax: Number(max) } : {};
+  const between = text.match(/between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*(?:min|minutes)?/i);
+  if (between) return { runtimeMin: Number(between[1]), runtimeMax: Number(between[2]) };
+  const max = text.match(/(?:under|below|at most|no more than|less than|<|<=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
+  const min = text.match(/(?:over|more than|at least|no less than|longer than|>|>=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
+  const yearMin = text.match(/(?:past|after)\s*((?:19|20)\d{2})/i)?.[1];
+  const yearMinInclusive = text.match(/(?:since|from)\s*((?:19|20)\d{2})/i)?.[1];
+  const yearMax = text.match(/(?:before|prior to|earlier than)\s*((?:19|20)\d{2})/i)?.[1];
+  return {
+    ...(min ? { runtimeMin: Number(min) + 1 } : {}),
+    ...(max ? { runtimeMax: Number(max) } : {}),
+    ...(yearMin ? { yearMin: Number(yearMin) + 1 } : {}),
+    ...(yearMinInclusive ? { yearMin: Number(yearMinInclusive) } : {}),
+    ...(yearMax ? { yearMax: Number(yearMax) - 1 } : {}),
+  };
 }
 
 function filterSummary(filters: HardFilters) {
@@ -279,8 +290,13 @@ export default function Home() {
     const requestId = ++requestRef.current;
     abortRef.current?.abort();
     const cached = cacheRef.current.get(cacheKey);
-    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setResultSource(cached.resultSource ?? "jev"); setDisplayedQuery(query); setDisplayedFilters(nextFilters); setResultFreshness(cached.ids.length ? "fresh" : "empty"); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
     const candidates = applyHardFilters(movies, nextFilters, new Set(session.dismissedIds));
+    const allowedIds = new Set(candidates.map(movie => movie.id));
+    if (cached) {
+      const safeIds = cached.ids.filter(id => allowedIds.has(id));
+      const safeEvaluations = Object.fromEntries(Object.entries(cached.evaluations).filter(([id]) => allowedIds.has(Number(id))));
+      setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds.filter(id => allowedIds.has(id))); setResultSource(cached.resultSource ?? "jev"); setDisplayedQuery(query); setDisplayedFilters(nextFilters); setResultFreshness(safeIds.length ? "fresh" : "empty"); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: safeEvaluations, shortlistedIds: safeIds })); setStatus(cached.detailMessage ?? `${safeIds.length} films rose to the surface.`); return;
+    }
     const instant = fallbackEligible(candidates, `${query} ${other}`.trim());
     const instantEvaluations = Object.fromEntries(instant.evaluations.map(evaluation => [evaluation.movieId, evaluation]));
     setFacetsComplete(false);
@@ -301,7 +317,7 @@ export default function Home() {
       if (requestId !== requestRef.current) return;
       if (!response.ok) return;
       const evaluations = Object.fromEntries((data.evaluations as MovieEvaluation[]).map(evaluation => [evaluation.movieId, evaluation]));
-      const ids = data.rankedEligibleIds as number[];
+      const ids = (data.rankedEligibleIds as number[]).filter(id => allowedIds.has(id));
       const complete = data.facetsComplete !== false;
       const detailedIds = Array.isArray(data.facetMovieIds) ? data.facetMovieIds as number[] : [];
       const detailMessage = typeof data.detailMessage === "string" ? data.detailMessage : undefined;
