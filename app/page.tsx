@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, Check, Copy, Heart, RotateCcw, Sparkles, X } from "lucide-react";
 import Matter from "matter-js";
 import { movies } from "@/lib/movies";
+import { applyHardFilters, fallbackEligible } from "@/lib/ranking";
 import type { HardFilters, Movie, MovieEvaluation, MoodSnapshot } from "@/lib/types";
 
 type PosterPhase = "heap" | "lifting" | "result" | "returning";
@@ -62,8 +63,7 @@ export default function Home() {
   const [resultFreshness, setResultFreshness] = useState<ResultFreshness>("empty");
   const [displayedQuery, setDisplayedQuery] = useState("");
   const [displayedFilters, setDisplayedFilters] = useState<HardFilters>({});
-  const [retryableFailure, setRetryableFailure] = useState(false);
-  const [retrySnapshot, setRetrySnapshot] = useState<SearchSnapshot | null>(null);
+  const [resultSource, setResultSource] = useState<"jev" | "mixed" | "fallback">("fallback");
   const [facetsComplete, setFacetsComplete] = useState(true);
   const [facetMovieIds, setFacetMovieIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<Movie | null>(null);
@@ -84,7 +84,8 @@ export default function Home() {
   const dragRef = useRef<{ constraint: Matter.Constraint; lastX: number; lastY: number; lastTime: number; vx: number; vy: number } | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const cacheRef = useRef(new Map<string, { evaluations: Record<number, MovieEvaluation>; ids: number[]; facetsComplete: boolean; facetMovieIds: number[]; detailMessage?: string }>());
+  const facetAbortRef = useRef<AbortController | null>(null);
+  const cacheRef = useRef(new Map<string, { evaluations: Record<number, MovieEvaluation>; ids: number[]; facetsComplete: boolean; facetMovieIds: number[]; detailMessage?: string; resultSource?: "jev" | "mixed" | "fallback" }>());
 
   const activeMovies = useMemo(() => movies.filter(movie => !session.dismissedIds.includes(movie.id)), [session.dismissedIds]);
   const liftedIds = useMemo(() => session.shortlistedIds.filter(id => activeMovies.some(movie => movie.id === id)), [activeMovies, session.shortlistedIds]);
@@ -269,57 +270,76 @@ export default function Home() {
   }, []);
 
   const evaluate = useCallback(async (requested?: SearchSnapshot) => {
-    if (loading) return;
     const query = requested?.query ?? prompt.trim();
     const other = requested?.other ?? second.trim();
     if (query.length < 5 && other.length < 5) { setStatus("Type at least five characters, then press Enter to search."); return; }
     const nextFilters = requested?.filters ?? { ...filters, ...parseRuntime(query) };
     const mode = requested?.mode ?? session.mode;
-    const snapshot = { query, other, filters: nextFilters, mode } satisfies SearchSnapshot;
     const cacheKey = JSON.stringify({ query, other, mode, filters: nextFilters, excluded: session.dismissedIds });
     const requestId = ++requestRef.current;
     abortRef.current?.abort();
     const cached = cacheRef.current.get(cacheKey);
-    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setDisplayedQuery(query); setDisplayedFilters(nextFilters); setResultFreshness(cached.ids.length ? "fresh" : "empty"); setRetrySnapshot(null); setRetryableFailure(false); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
+    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setResultSource(cached.resultSource ?? "jev"); setDisplayedQuery(query); setDisplayedFilters(nextFilters); setResultFreshness(cached.ids.length ? "fresh" : "empty"); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
+    const candidates = applyHardFilters(movies, nextFilters, new Set(session.dismissedIds));
+    const instant = fallbackEligible(candidates, `${query} ${other}`.trim());
+    const instantEvaluations = Object.fromEntries(instant.evaluations.map(evaluation => [evaluation.movieId, evaluation]));
+    setFacetsComplete(false);
+    setFacetMovieIds([]);
+    setResultSource("fallback");
+    setDisplayedQuery(query);
+    setDisplayedFilters(nextFilters);
+    setResultFreshness(instant.ids.length ? "fresh" : "empty");
+    setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: instantEvaluations, shortlistedIds: instant.ids }));
+    setStatus(instant.ids.length ? `${instant.ids.length} instant matches ready. Jev is refining…` : "No films match those constraints.");
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
     setFilters(nextFilters);
-    setStatus("Jev is weighing the heap…");
     try {
-      const response = await fetch("/api/evaluate", { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), body: JSON.stringify({ preferences: query ? [query] : [], secondPreferences: other ? [other] : [], mode: session.mode, filters: nextFilters, excludedIds: session.dismissedIds }) });
+      const response = await fetch("/api/evaluate", { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]), body: JSON.stringify({ preferences: query ? [query] : [], secondPreferences: other ? [other] : [], mode, filters: nextFilters, excludedIds: session.dismissedIds }) });
       const data = await response.json();
       if (requestId !== requestRef.current) return;
-      if (!response.ok) { const failure = new Error(data.error || "The evaluation failed."); Object.assign(failure, { retryable: data.retryable === true, code: data.code, generationId: data.generationId, retryAfter: data.retryAfter }); throw failure; }
+      if (!response.ok) return;
       const evaluations = Object.fromEntries((data.evaluations as MovieEvaluation[]).map(evaluation => [evaluation.movieId, evaluation]));
       const ids = data.rankedEligibleIds as number[];
       const complete = data.facetsComplete !== false;
       const detailedIds = Array.isArray(data.facetMovieIds) ? data.facetMovieIds as number[] : [];
       const detailMessage = typeof data.detailMessage === "string" ? data.detailMessage : undefined;
+      const source = data.resultSource === "mixed" || data.resultSource === "fallback" ? data.resultSource : "jev";
       setFacetsComplete(complete);
       setFacetMovieIds(detailedIds);
+      setResultSource(source);
       setDisplayedQuery(query);
       setDisplayedFilters(nextFilters);
       setResultFreshness(ids.length ? "fresh" : "empty");
-      setRetrySnapshot(null);
-      setRetryableFailure(false);
-      cacheRef.current.set(cacheKey, { evaluations, ids, facetsComplete: complete, facetMovieIds: detailedIds, detailMessage });
+      cacheRef.current.set(cacheKey, { evaluations, ids, facetsComplete: complete, facetMovieIds: detailedIds, detailMessage, resultSource: source });
       setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations, shortlistedIds: ids }));
-      setStatus(detailMessage ?? (ids.length ? `${ids.length} films rose to the surface.` : "Jev found no films that match those constraints."));
+      setStatus(detailMessage ?? (source === "fallback" ? "Showing instant matches while Jev reconnects." : ids.length ? `${ids.length} films rose to the surface.` : "No films match those constraints."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      if (error instanceof DOMException && error.name === "TimeoutError") { if (requestId === requestRef.current) setStatus("Search timed out. Please try again."); return; }
       if (requestId === requestRef.current) {
-        const failure = error as Error & { retryable?: boolean; code?: string; retryAfter?: number };
-        setRetrySnapshot(snapshot);
-        setRetryableFailure(failure.retryable === true || failure.code === "provider");
-        setResultFreshness(liftedIds.length ? "stale" : "empty");
-        setStatus(liftedIds.length ? `${failure.message || "Jev could not complete this search."} Showing results for: ${displayedQuery || "the previous search"}.` : (failure.message || "The evaluation failed. Try again."));
+        setResultSource("fallback");
+        setStatus(instant.ids.length ? "Showing instant matches while Jev reconnects." : "No films match those constraints.");
       }
     } finally { if (requestId === requestRef.current) setLoading(false); }
-  }, [displayedQuery, filters, liftedIds.length, loading, prompt, second, session.dismissedIds, session.mode]);
+  }, [filters, prompt, second, session.dismissedIds, session.mode]);
 
-  const retrySearch = () => { if (!retrySnapshot) return; setPrompt(retrySnapshot.query); setSecond(retrySnapshot.other); setFilters(retrySnapshot.filters); void evaluate(retrySnapshot); };
+  const loadFacets = useCallback(async (movieId: number) => {
+    if (facetsComplete || facetMovieIds.includes(movieId) || !displayedQuery) return;
+    facetAbortRef.current?.abort();
+    const controller = new AbortController();
+    facetAbortRef.current = controller;
+    try {
+      const response = await fetch("/api/evaluate/facets", { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]), body: JSON.stringify({ preferences: [displayedQuery], secondPreferences: session.secondPreferences, mode: session.mode, filters: displayedFilters, movieIds: liftedIds.slice(0, 6) }) });
+      if (!response.ok) return;
+      const data = await response.json() as { facetScores?: Record<string, { mood: number; pace: number; theme: number }>; facetMovieIds?: number[]; facetsComplete?: boolean };
+      const scores = data.facetScores ?? {};
+      setSession(previous => ({ ...previous, evaluations: Object.fromEntries(Object.entries(previous.evaluations).map(([id, evaluation]) => scores[id] ? [id, { ...evaluation, ...scores[id] }] : [id, evaluation])) }));
+      setFacetMovieIds(data.facetMovieIds ?? []);
+      setFacetsComplete(data.facetsComplete === true);
+    } catch { /* The overall result remains usable when detail refinement is unavailable. */ }
+  }, [displayedFilters, displayedQuery, facetMovieIds, facetsComplete, liftedIds, session.mode, session.secondPreferences]);
+  const openDetail = useCallback((movie: Movie) => { setDetail(movie); void loadFacets(movie.id); }, [loadFacets]);
 
   const clearSearch = () => {
     requestRef.current += 1;
@@ -331,8 +351,7 @@ export default function Home() {
     setResultFreshness("empty");
     setDisplayedQuery("");
     setDisplayedFilters({});
-    setRetrySnapshot(null);
-    setRetryableFailure(false);
+    setResultSource("fallback");
     setSession(previous => ({ ...previous, preferences: [], secondPreferences: [], filters: {}, evaluations: {}, shortlistedIds: [] }));
     setFilters({});
     setPrompt("");
@@ -364,15 +383,15 @@ export default function Home() {
           <label className="sr-only" htmlFor="prompt">What would you like to watch?</label>
           <input id="prompt" type="text" value={prompt} autoComplete="off" onChange={event => { const value = event.target.value; setPrompt(value); if (!value.trim() && prompt.trim()) clearSearch(); }} placeholder="What are you in the mood for?" />
           {prompt && <button type="button" className="search-clear" aria-label="Clear search" onClick={clearSearch}><X size={15} /></button>}
-          <button className="search-submit" type="submit" aria-label="Find my films" disabled={loading}>{loading ? <span className="loading-dot" /> : <span aria-hidden="true">↵</span>}</button>
+          <button className="search-submit" type="submit" aria-label="Find my films">{loading ? <span className="loading-dot" /> : <span aria-hidden="true">↵</span>}</button>
           {suggestions.length > 0 && <div className="suggestions" aria-label="Movie title suggestions">{suggestions.map(movie => <button key={movie.id} type="button" onClick={() => { setPrompt(movie.title); setSuggestions([]); }}><img src={movie.posterPath} alt="" /><span><strong>{movie.title}</strong><small>{movie.year}</small></span></button>)}</div>}
         </form>
         {session.mode === "duo" && <div className="second-mood"><label className="sr-only" htmlFor="second">Their mood</label><input id="second" value={second} onChange={event => { const value = event.target.value; setSecond(value); if (!value.trim() && second.trim()) clearSearch(); }} onKeyDown={event => { if (event.key === "Enter") void evaluate(); }} placeholder="And their mood…" /></div>}
-        <p className={`status ${/failed|unavailable|billing/i.test(status) ? "error" : ""}`} role="status">{status || "A mood, a story, a feeling. Press Enter."}</p>
-        {(resultFreshness === "stale" || retryableFailure) && <div className="stale-results" role="status"><span>{resultFreshness === "stale" ? <>Showing the previous successful search: <strong>{displayedQuery}</strong>{filterSummary(displayedFilters) && ` · ${filterSummary(displayedFilters)}`}</> : "Jev could not complete this search."}</span>{retryableFailure && <button type="button" className="retry-search" onClick={retrySearch}>Retry search</button>}</div>}
+        <p className="status" role="status">{status || "A mood, a story, a feeling. Press Enter."}</p>
+        {resultSource !== "jev" && displayedQuery && <div className="stale-results" role="status">Showing instant matches while Jev refines the ranking.</div>}
       </section>
       <section className="result-shelf" ref={resultShelfRef} aria-label="Matching movies">{liftedIds.map(id => <span className="result-slot" key={id} aria-hidden="true" />)}</section>
-      <div className="motion-layer" ref={heapRef} aria-label="Interactive movie poster heap">{activeMovies.map(movie => { const phase = phasesRef.current.get(movie.id) ?? "heap"; return <Poster key={movie.id} movie={movie} phase={phase} register={(id, element) => { if (element) posterRefs.current.set(id, element); else posterRefs.current.delete(id); }} pinned={session.pinnedIds.includes(movie.id)} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(movie.id)} onSeen={() => seen(movie.id)} onInfo={() => setDetail(movie)} />; })}</div>
+      <div className="motion-layer" ref={heapRef} aria-label="Interactive movie poster heap">{activeMovies.map(movie => { const phase = phasesRef.current.get(movie.id) ?? "heap"; return <Poster key={movie.id} movie={movie} phase={phase} register={(id, element) => { if (element) posterRefs.current.set(id, element); else posterRefs.current.delete(id); }} pinned={session.pinnedIds.includes(movie.id)} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(movie.id)} onSeen={() => seen(movie.id)} onInfo={() => openDetail(movie)} />; })}</div>
     </div>
     {detail && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setDetail(null)}><div className="detail-card" onClick={event => event.stopPropagation()}><button className="icon-btn close-detail" aria-label="Close details" onClick={() => setDetail(null)}><X size={16} /></button><div className="eyebrow">Movie detail</div><h2>{detail.title}</h2><p className="sans">{detail.overview}</p><p className="sans detail-meta">{detail.year} · {detail.runtime} minutes · {detail.genres.join(" · ")}</p>{session.evaluations[detail.id] && (facetsComplete || facetMovieIds.includes(detail.id) ? <div className="breakdown">{([['Mood', session.evaluations[detail.id].mood], ['Pace', session.evaluations[detail.id].pace], ['Theme', session.evaluations[detail.id].theme]] as [string, number][]).map(([label, value]) => <label key={label}><span>{label} fit</span><span>{Math.round(value * 100)}%</span><div className="bar"><i style={{ width: `${value * 100}%` }} /></div></label>)}</div> : <p className="sans detail-note">Detailed fit is temporarily unavailable. The overall ranking is still valid.</p>)}</div></div>}
     {surprise && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setSurprise(null)}><div className="surprise-card" onClick={event => event.stopPropagation()}><div className="eyebrow">Tonight’s spotlight</div><h2>{surprise.title}</h2><p>{surprise.year} · {surprise.runtime} minutes</p><button className="btn primary" onClick={() => setSurprise(null)}>Keep exploring</button></div></div>}
