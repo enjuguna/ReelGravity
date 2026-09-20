@@ -6,15 +6,22 @@ import Matter from "matter-js";
 import { movies } from "@/lib/movies";
 import type { HardFilters, Movie, MovieEvaluation, MoodSnapshot } from "@/lib/types";
 
-type Position = { x: number; y: number; a: number };
-type PosterMode = "heap" | "lifted";
-type PosterProps = { movie: Movie; x: number; y: number; angle: number; pinned: boolean; mode: PosterMode; onPin: () => void; onSeen: () => void; onInfo: () => void; onDragStart: (id: number, x: number, y: number) => void; onDragMove: (x: number, y: number) => void; onDragEnd: () => void };
+type PosterPhase = "heap" | "lifting" | "result" | "returning";
+type PosterTarget = { x: number; y: number; angle: number };
+type PosterMotion = { phase: PosterPhase; target?: PosterTarget; transitionId: number };
+type PosterProps = { movie: Movie; phase: PosterPhase; pinned: boolean; register: (id: number, element: HTMLElement | null) => void; onPin: () => void; onSeen: () => void; onInfo: () => void; onDragStart: (id: number, x: number, y: number) => void; onDragMove: (x: number, y: number) => void; onDragEnd: () => void };
 
 const initialIds = movies.map(movie => movie.id);
 const emptySession = { preferences: [] as string[], secondPreferences: [] as string[], mode: "solo" as "solo" | "duo", filters: {} as HardFilters, evaluations: {} as Record<number, MovieEvaluation>, shortlistedIds: [] as number[], pinnedIds: [] as number[], dismissedIds: [] as number[] };
-const POSTER_WIDTH = 44;
-const POSTER_HEIGHT = 66;
+const POSTER_WIDTH = 64;
+const POSTER_HEIGHT = 96;
 const STEP_MS = 1000 / 60;
+const ENGINE_GRAVITY_Y = 0.825;
+const ENGINE_FRICTION = 0.55;
+const ENGINE_FRICTION_STATIC = 0.8;
+const ENGINE_RESTITUTION = 0.12;
+const ENGINE_FRICTION_AIR = 0.02;
+const ENGINE_DENSITY = 0.0015;
 
 function parseRuntime(text: string): HardFilters {
   const max = text.match(/(?:under|below|at most)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
@@ -22,12 +29,11 @@ function parseRuntime(text: string): HardFilters {
   return between ? { runtimeMin: Number(between[1]), runtimeMax: Number(between[2]) } : max ? { runtimeMax: Number(max) } : {};
 }
 
-function Poster({ movie, x, y, angle, pinned, mode, onPin, onSeen, onInfo, onDragStart, onDragMove, onDragEnd }: PosterProps) {
+function Poster({ movie, phase, pinned, register, onPin, onSeen, onInfo, onDragStart, onDragMove, onDragEnd }: PosterProps) {
   const [broken, setBroken] = useState(false);
   const pointerId = useRef<number | null>(null);
-  const draggable = mode === "heap";
-  return <article className={`poster ${mode === "lifted" ? "lifted-poster" : ""}`} data-movie-id={movie.id} tabIndex={0} onDoubleClick={onInfo} onKeyDown={event => { if (event.key === "Enter") onInfo(); }} aria-label={`${movie.title}, ${movie.year}`} style={draggable ? { left: 0, top: 0, transform: `translate3d(${x}px, ${y}px, 0) rotate(${angle}deg)` } : undefined}
-    onPointerDown={event => { if (!draggable || (event.target as HTMLElement).closest("button")) return; pointerId.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); onDragStart(movie.id, event.clientX, event.clientY); }}
+  return <article ref={element => register(movie.id, element)} className="poster" data-movie-id={movie.id} data-phase={phase} tabIndex={0} onDoubleClick={onInfo} onKeyDown={event => { if (event.key === "Enter") onInfo(); }} aria-label={`${movie.title}, ${movie.year}`}
+    onPointerDown={event => { if (event.currentTarget.dataset.phase !== "heap" || (event.target as HTMLElement).closest("button")) return; pointerId.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); onDragStart(movie.id, event.clientX, event.clientY); }}
     onPointerMove={event => { if (pointerId.current === event.pointerId) onDragMove(event.clientX, event.clientY); }}
     onPointerUp={() => { if (pointerId.current !== null) { pointerId.current = null; onDragEnd(); } }}
     onPointerCancel={() => { pointerId.current = null; onDragEnd(); }}>
@@ -49,12 +55,18 @@ export default function Home() {
   const [detail, setDetail] = useState<Movie | null>(null);
   const [surprise, setSurprise] = useState<Movie | null>(null);
   const [undo, setUndo] = useState<{ id: number; wasPinned: boolean; wasShortlisted: boolean } | null>(null);
-  const [positions, setPositions] = useState<Record<number, Position>>({});
   const [reduced, setReduced] = useState(false);
+  const reducedRef = useRef(false);
   const heapRef = useRef<HTMLDivElement>(null);
+  const resultShelfRef = useRef<HTMLDivElement>(null);
+  const posterRefs = useRef(new Map<number, HTMLElement>());
   const engineRef = useRef<Matter.Engine | null>(null);
   const bodiesRef = useRef(new Map<number, Matter.Body>());
   const boundsRef = useRef<Matter.Body[]>([]);
+  const phasesRef = useRef(new Map<number, PosterPhase>());
+  const motionsRef = useRef(new Map<number, PosterMotion>());
+  const shortlistedRef = useRef<number[]>([]);
+  const transitionRef = useRef(0);
   const dragRef = useRef<{ constraint: Matter.Constraint; lastX: number; lastY: number; lastTime: number; vx: number; vy: number } | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -62,8 +74,6 @@ export default function Home() {
 
   const activeMovies = useMemo(() => movies.filter(movie => !session.dismissedIds.includes(movie.id)), [session.dismissedIds]);
   const liftedIds = useMemo(() => session.shortlistedIds.filter(id => activeMovies.some(movie => movie.id === id)), [activeMovies, session.shortlistedIds]);
-  const heapIds = useMemo(() => activeMovies.map(movie => movie.id).filter(id => !liftedIds.includes(id)), [activeMovies, liftedIds]);
-  const heapKey = heapIds.join(",");
 
   useEffect(() => {
     const saved = localStorage.getItem("reel-gravity-session");
@@ -78,8 +88,9 @@ export default function Home() {
       }
     } catch { setStatus("Saved mood could not be restored. The catalog is ready."); }
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reducedRef.current = media.matches;
     setReduced(media.matches);
-    const onChange = () => setReduced(media.matches);
+    const onChange = () => { reducedRef.current = media.matches; setReduced(media.matches); };
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
@@ -96,96 +107,111 @@ export default function Home() {
   }, [prompt]);
 
   useEffect(() => {
-    const heap = heapRef.current;
-    if (!heap) return;
-    const rect = heap.getBoundingClientRect();
-    const width = rect.width;
-    let height = rect.height;
-    let POSTER_WIDTH = Math.max(24, Math.min(44, Math.sqrt(width / 1200) * 44));
-    let POSTER_HEIGHT = POSTER_WIDTH * 1.5;
-    heap.style.setProperty("--poster-width", `${POSTER_WIDTH}px`);
-    heap.style.setProperty("--poster-height", `${POSTER_HEIGHT}px`);
-    const seed = (id: number, index: number) => {
-      const spacing = Math.hypot(POSTER_WIDTH, POSTER_HEIGHT) + 6;
-      const columns = Math.max(1, Math.floor((width - 16) / spacing));
-      return { x: 8 + (index % columns) * spacing + (spacing - POSTER_WIDTH) / 2, y: -POSTER_HEIGHT - Math.floor(index / columns) * spacing, a: ((id * 13 + index * 17) % 150) - 75 };
-    };
-    setPositions(previous => {
-      const next = { ...previous };
-      heapIds.forEach((id, index) => { if (!next[id]) next[id] = seed(id, index); });
-      return next;
-    });
-    if (reduced) {
-      setPositions(previous => { const next = { ...previous }; heapIds.forEach((id, index) => { const p = seed(id, index); next[id] = { x: p.x, y: Math.max(0, height - POSTER_HEIGHT - (index % 3) * 18), a: p.a }; }); return next; });
-      return;
-    }
-
-    const engine = Matter.Engine.create({ gravity: { x: 0, y: 1.1 }, enableSleeping: true, positionIterations: 10, velocityIterations: 8, constraintIterations: 4 });
+    const world = heapRef.current;
+    if (!world) return;
+    let width = world.clientWidth;
+    let height = world.clientHeight;
+    world.style.setProperty("--poster-width", `${POSTER_WIDTH}px`);
+    world.style.setProperty("--poster-height", `${POSTER_HEIGHT}px`);
+    const seed = (index: number) => ({ x: 18 + (index * (POSTER_WIDTH + 8)) % Math.max(40, width - POSTER_WIDTH), y: -POSTER_HEIGHT - (index % 7) * 34 - Math.random() * 80, a: ((index * 29) % 70) - 35 });
+    const engine = Matter.Engine.create({ gravity: { x: 0, y: ENGINE_GRAVITY_Y }, enableSleeping: true, positionIterations: 10, velocityIterations: 8, constraintIterations: 4 });
     engineRef.current = engine;
-    const bodies = new Map<number, Matter.Body>();
-    const floor = Matter.Bodies.rectangle(width / 2, height + 12, 5000, 24, { isStatic: true, label: "floor" });
-    const left = Matter.Bodies.rectangle(-28, height / 2, 56, 3000, { isStatic: true, label: "left-wall" });
-    const right = Matter.Bodies.rectangle(width + 28, height / 2, 56, 3000, { isStatic: true, label: "right-wall" });
+    const floor = Matter.Bodies.rectangle(width / 2, height + 14, Math.max(width, 1200), 28, { isStatic: true, label: "floor" });
+    const left = Matter.Bodies.rectangle(-24, height / 2, 48, Math.max(height, 1200), { isStatic: true, label: "left-wall" });
+    const right = Matter.Bodies.rectangle(width + 24, height / 2, 48, Math.max(height, 1200), { isStatic: true, label: "right-wall" });
     boundsRef.current = [floor, left, right];
-    heapIds.forEach((id, index) => {
-      const p = positions[id] ?? seed(id, index);
-      const body = Matter.Bodies.rectangle(Math.max(POSTER_WIDTH / 2, Math.min(width - POSTER_WIDTH / 2, p.x + POSTER_WIDTH / 2)), p.y + POSTER_HEIGHT / 2, POSTER_WIDTH, POSTER_HEIGHT, { label: String(id), friction: 0.48, frictionStatic: 0.7, restitution: 0.12, frictionAir: 0.018, density: 0.0012, slop: 0.04, chamfer: { radius: 2 } });
+    movies.forEach((movie, index) => {
+      const p = seed(index);
+      const body = Matter.Bodies.rectangle(Math.max(POSTER_WIDTH / 2, Math.min(width - POSTER_WIDTH / 2, p.x + POSTER_WIDTH / 2)), p.y + POSTER_HEIGHT / 2, POSTER_WIDTH, POSTER_HEIGHT, { label: String(movie.id), friction: ENGINE_FRICTION, frictionStatic: ENGINE_FRICTION_STATIC, restitution: ENGINE_RESTITUTION, frictionAir: ENGINE_FRICTION_AIR, density: ENGINE_DENSITY, slop: 0.04, chamfer: { radius: 2 } });
       Matter.Body.setAngle(body, p.a * Math.PI / 180);
       Matter.Body.setAngularVelocity(body, ((index % 9) - 4) * 0.012);
-      bodies.set(id, body);
+      bodiesRef.current.set(movie.id, body);
+      phasesRef.current.set(movie.id, "heap");
     });
-    bodiesRef.current = bodies;
-    Matter.World.add(engine.world, [...bodies.values(), floor, left, right]);
-
-    let previousWidth = width;
-    const updateBounds = () => {
-      const bounds = heap.getBoundingClientRect();
-      const w = bounds.width;
-      const nextWidth = Math.max(24, Math.min(44, Math.sqrt(w / 1200) * 44));
-      const scale = nextWidth / POSTER_WIDTH;
-      bodies.forEach(body => {
-        Matter.Body.scale(body, scale, scale);
-        const radius = Math.hypot(nextWidth, nextWidth * 1.5) / 2;
-        Matter.Body.setPosition(body, {
-          x: Math.max(radius, Math.min(w - radius, body.position.x * w / previousWidth)),
-          y: Math.min(bounds.height - radius, body.position.y + bounds.height - height),
-        });
-        Matter.Sleeping.set(body, false);
-      });
-      POSTER_WIDTH = nextWidth;
-      POSTER_HEIGHT = nextWidth * 1.5;
-      heap.style.setProperty("--poster-width", `${POSTER_WIDTH}px`);
-      heap.style.setProperty("--poster-height", `${POSTER_HEIGHT}px`);
-      previousWidth = w;
-      height = bounds.height;
-      Matter.Body.setPosition(left, { x: -28, y: height / 2 });
-      Matter.Body.setPosition(right, { x: w + 28, y: height / 2 });
-      Matter.Body.setPosition(floor, { x: w / 2, y: height + 12 });
+    Matter.World.add(engine.world, [...bodiesRef.current.values(), floor, left, right]);
+    const setCollision = (body: Matter.Body, enabled: boolean) => { body.collisionFilter.mask = enabled ? 0xffffffff : 0; };
+    const slotTargets = (ids: number[]) => {
+      const shelf = resultShelfRef.current?.getBoundingClientRect();
+      const worldRect = world.getBoundingClientRect();
+      if (!shelf) return new Map<number, PosterTarget>();
+      const gap = 12;
+      const columns = Math.max(1, Math.floor((shelf.width - 32 + gap) / (POSTER_WIDTH + gap)));
+      const result = new Map<number, PosterTarget>();
+      ids.forEach((id, index) => { const col = index % columns; const row = Math.floor(index / columns); result.set(id, { x: shelf.left - worldRect.left + 16 + col * (POSTER_WIDTH + gap), y: shelf.top - worldRect.top + 16 + row * (POSTER_HEIGHT + gap), angle: ((id * 7) % 9) - 4 }); });
+      return result;
     };
-    const observer = new ResizeObserver(updateBounds);
-    observer.observe(heap);
+    const coordinator = (ids: number[]) => {
+      const next = new Set(ids);
+      const previous = new Set(shortlistedRef.current);
+      const targets = slotTargets(ids);
+      const transitionId = ++transitionRef.current;
+      bodiesRef.current.forEach((body, id) => {
+        const target = targets.get(id);
+        const was = previous.has(id);
+        const now = next.has(id);
+        if (now && !was) { phasesRef.current.set(id, "lifting"); setCollision(body, false); motionsRef.current.set(id, { phase: "lifting", target, transitionId }); Matter.Sleeping.set(body, false); }
+        else if (now) { phasesRef.current.set(id, "result"); setCollision(body, false); motionsRef.current.set(id, { phase: "result", target, transitionId }); }
+        else if (!now && was) { phasesRef.current.set(id, "returning"); setCollision(body, true); Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, { x: Math.max(-3, Math.min(3, body.velocity.x)), y: 1.8 }); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); }
+      });
+      shortlistedRef.current = ids;
+    };
+    const syncDismissed = () => { const dismissed = new Set(session.dismissedIds); bodiesRef.current.forEach((body, id) => { if (dismissed.has(id)) { Matter.Body.setStatic(body, true); setCollision(body, false); } else if (!motionsRef.current.get(id)?.phase || motionsRef.current.get(id)?.phase === "heap") Matter.Body.setStatic(body, false); }); };
+    coordinator(liftedIds);
+    syncDismissed();
+    let previousWidth = width;
+    const observer = new ResizeObserver(() => { const rect = world.getBoundingClientRect(); const nextWidth = rect.width; const scale = nextWidth / Math.max(1, previousWidth); bodiesRef.current.forEach(body => { Matter.Body.scale(body, scale, scale); Matter.Body.setPosition(body, { x: Math.max(POSTER_WIDTH / 2, Math.min(nextWidth - POSTER_WIDTH / 2, body.position.x * scale)), y: Math.min(rect.height - POSTER_HEIGHT / 2, body.position.y) }); }); width = nextWidth; height = rect.height; Matter.Body.setPosition(left, { x: -24, y: height / 2 }); Matter.Body.setPosition(right, { x: width + 24, y: height / 2 }); Matter.Body.setPosition(floor, { x: width / 2, y: height + 14 }); previousWidth = nextWidth; });
+    observer.observe(world);
     let frame = 0;
     let last = performance.now();
     let accumulator = 0;
-    const elements = new Map(Array.from(heap.querySelectorAll<HTMLElement>("[data-movie-id]")).map(element => [Number(element.dataset.movieId), element]));
-    elements.forEach(element => { element.style.left = "0"; element.style.top = "0"; });
     const tick = (now: number) => {
-      const elapsed = Math.min(50, now - last);
-      last = now;
-      accumulator = Math.min(accumulator + elapsed, STEP_MS * 5);
-      let steps = 0;
-      while (accumulator >= STEP_MS && steps < 5) { Matter.Engine.update(engine, STEP_MS); accumulator -= STEP_MS; steps += 1; }
-      bodies.forEach((body, id) => {
-        const element = elements.get(id);
-        if (element) element.style.transform = `translate3d(${body.position.x - POSTER_WIDTH / 2}px, ${body.position.y - POSTER_HEIGHT / 2}px, 0) rotate(${body.angle}rad)`;
-      });
+      const elapsed = Math.min(50, now - last); last = now; accumulator = Math.min(accumulator + elapsed, STEP_MS * 5);
+      let steps = 0; while (!reducedRef.current && accumulator >= STEP_MS && steps < 5) { Matter.Engine.update(engine, STEP_MS); accumulator -= STEP_MS; steps += 1; }
+      bodiesRef.current.forEach((body, id) => { const motion = motionsRef.current.get(id); const element = posterRefs.current.get(id); if (!element) return; if (motion?.target && (motion.phase === "lifting" || motion.phase === "result")) { Matter.Body.setStatic(body, true); const dx = motion.target.x + POSTER_WIDTH / 2 - body.position.x; const dy = motion.target.y + POSTER_HEIGHT / 2 - body.position.y; const rate = motion.phase === "lifting" ? 0.105 : 0.16; Matter.Body.setPosition(body, { x: body.position.x + dx * rate, y: body.position.y + dy * rate }); Matter.Body.setAngle(body, body.angle + (motion.target.angle * Math.PI / 180 - body.angle) * 0.12); if (Math.abs(dx) < 1.5 && Math.abs(dy) < 1.5) { Matter.Body.setPosition(body, { x: motion.target.x + POSTER_WIDTH / 2, y: motion.target.y + POSTER_HEIGHT / 2 }); phasesRef.current.set(id, "result"); motionsRef.current.set(id, { ...motion, phase: "result" }); } } else if (motion?.phase === "returning" && body.position.y > height - POSTER_HEIGHT * 1.8 && Math.abs(body.velocity.y) < 0.5) { phasesRef.current.set(id, "heap"); motionsRef.current.delete(id); setCollision(body, true); }
+        element.dataset.phase = phasesRef.current.get(id) ?? "heap"; element.style.left = "0"; element.style.top = "0"; element.style.transform = `translate3d(${body.position.x - POSTER_WIDTH / 2}px, ${body.position.y - POSTER_HEIGHT / 2}px, 0) rotate(${body.angle}rad)`; });
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); if (dragRef.current) Matter.World.remove(engine.world, dragRef.current.constraint); Matter.Engine.clear(engine); bodiesRef.current.clear(); boundsRef.current = []; engineRef.current = null; };
-    // The heap key intentionally rebuilds only when the membership changes; typing does not touch it.
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); if (dragRef.current) Matter.World.remove(engine.world, dragRef.current.constraint); Matter.Engine.clear(engine); bodiesRef.current.clear(); phasesRef.current.clear(); motionsRef.current.clear(); boundsRef.current = []; engineRef.current = null; };
+    // The Matter world is intentionally mounted once; searches are coordinated below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heapKey, reduced]);
+  }, []);
+
+  useEffect(() => {
+    if (!engineRef.current) return;
+    const shelf = resultShelfRef.current;
+    const world = heapRef.current;
+    if (!shelf || !world) return;
+    const shelfRect = shelf.getBoundingClientRect();
+    const worldRect = world.getBoundingClientRect();
+    const gap = 12;
+    const columns = Math.max(1, Math.floor((shelfRect.width - 32 + gap) / (POSTER_WIDTH + gap)));
+    const next = new Set(liftedIds);
+    const previous = new Set(shortlistedRef.current);
+    const transitionId = ++transitionRef.current;
+    liftedIds.forEach((id, index) => { const body = bodiesRef.current.get(id); if (!body) return; const col = index % columns; const row = Math.floor(index / columns); const target = { x: shelfRect.left - worldRect.left + 16 + col * (POSTER_WIDTH + gap), y: shelfRect.top - worldRect.top + 16 + row * (POSTER_HEIGHT + gap), angle: ((id * 7) % 9) - 4 }; const phase: PosterPhase = previous.has(id) ? "result" : "lifting"; phasesRef.current.set(id, phase); body.collisionFilter.mask = 0; Matter.Body.setStatic(body, true); motionsRef.current.set(id, { phase, target, transitionId }); });
+    bodiesRef.current.forEach((body, id) => { if (next.has(id)) return; if (previous.has(id)) { phasesRef.current.set(id, "returning"); body.collisionFilter.mask = 0xffffffff; Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, { x: Math.max(-3, Math.min(3, body.velocity.x)), y: 1.8 }); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); } });
+    shortlistedRef.current = liftedIds;
+  }, [liftedIds]);
+
+  useEffect(() => {
+    if (!reduced || !heapRef.current) return;
+    const world = heapRef.current;
+    const width = world.clientWidth;
+    const height = world.clientHeight;
+    const heapIds = activeMovies.map(movie => movie.id).filter(id => !liftedIds.includes(id));
+    const columns = Math.max(1, Math.floor((width - 20) / (POSTER_WIDTH + 8)));
+    heapIds.forEach((id, index) => {
+      const body = bodiesRef.current.get(id);
+      if (!body) return;
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      Matter.Body.setStatic(body, true);
+      Matter.Body.setPosition(body, { x: 10 + col * (POSTER_WIDTH + 8) + POSTER_WIDTH / 2, y: Math.max(POSTER_HEIGHT / 2, height - POSTER_HEIGHT / 2 - row * 12) });
+      phasesRef.current.set(id, "heap");
+      motionsRef.current.delete(id);
+    });
+  }, [activeMovies, liftedIds, reduced]);
 
   const startDrag = useCallback((id: number, clientX: number, clientY: number) => {
     const body = bodiesRef.current.get(id);
@@ -292,8 +318,8 @@ export default function Home() {
         {session.mode === "duo" && <div className="second-mood"><label className="sr-only" htmlFor="second">Their mood</label><input id="second" value={second} onChange={event => setSecond(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void evaluate(); }} placeholder="And their mood…" /></div>}
         <p className={`status ${/failed|unavailable|billing/i.test(status) ? "error" : ""}`} role="status">{status || "A mood, a story, a feeling. Press Enter."}</p>
       </section>
-      {liftedIds.length > 0 && <section className="lifted-zone" aria-label="Matching movies">{liftedIds.map(id => { const movie = movies.find(item => item.id === id)!; return <Poster key={id} movie={movie} x={0} y={0} angle={0} pinned={session.pinnedIds.includes(id)} mode="lifted" onDragStart={() => {}} onDragMove={() => {}} onDragEnd={() => {}} onPin={() => pin(id)} onSeen={() => seen(id)} onInfo={() => setDetail(movie)} />; })}</section>}
-      <div className="heap-zone" ref={heapRef} aria-label="Movie poster heap">{heapIds.map(id => { const movie = movies.find(item => item.id === id)!; const position = positions[id] ?? { x: -200, y: -200, a: 0 }; return <Poster key={id} movie={movie} x={position.x} y={position.y} angle={position.a} pinned={session.pinnedIds.includes(id)} mode="heap" onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(id)} onSeen={() => seen(id)} onInfo={() => setDetail(movie)} />; })}</div>
+      <section className="result-shelf" ref={resultShelfRef} aria-label="Matching movies">{liftedIds.map(id => <span className="result-slot" key={id} aria-hidden="true" />)}</section>
+      <div className="motion-layer" ref={heapRef} aria-label="Interactive movie poster heap">{activeMovies.map(movie => { const phase = phasesRef.current.get(movie.id) ?? "heap"; return <Poster key={movie.id} movie={movie} phase={phase} register={(id, element) => { if (element) posterRefs.current.set(id, element); else posterRefs.current.delete(id); }} pinned={session.pinnedIds.includes(movie.id)} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(movie.id)} onSeen={() => seen(movie.id)} onInfo={() => setDetail(movie)} />; })}</div>
     </div>
     {detail && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setDetail(null)}><div className="detail-card" onClick={event => event.stopPropagation()}><button className="icon-btn close-detail" aria-label="Close details" onClick={() => setDetail(null)}><X size={16} /></button><div className="eyebrow">Movie detail</div><h2>{detail.title}</h2><p className="sans">{detail.overview}</p><p className="sans detail-meta">{detail.year} · {detail.runtime} minutes · {detail.genres.join(" · ")}</p>{session.evaluations[detail.id] && <div className="breakdown">{([['Mood', session.evaluations[detail.id].mood], ['Pace', session.evaluations[detail.id].pace], ['Theme', session.evaluations[detail.id].theme]] as [string, number][]).map(([label, value]) => <label key={label}><span>{label} fit</span><span>{Math.round(value * 100)}%</span><div className="bar"><i style={{ width: `${value * 100}%` }} /></div></label>)}</div>}</div></div>}
     {surprise && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setSurprise(null)}><div className="surprise-card" onClick={event => event.stopPropagation()}><div className="eyebrow">Tonight’s spotlight</div><h2>{surprise.title}</h2><p>{surprise.year} · {surprise.runtime} minutes</p><button className="btn primary" onClick={() => setSurprise(null)}>Keep exploring</button></div></div>}
