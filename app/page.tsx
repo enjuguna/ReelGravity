@@ -52,6 +52,8 @@ export default function Home() {
   const [filters, setFilters] = useState<HardFilters>({});
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [facetsComplete, setFacetsComplete] = useState(true);
+  const [facetMovieIds, setFacetMovieIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<Movie | null>(null);
   const [surprise, setSurprise] = useState<Movie | null>(null);
   const [undo, setUndo] = useState<{ id: number; wasPinned: boolean; wasShortlisted: boolean } | null>(null);
@@ -70,7 +72,7 @@ export default function Home() {
   const dragRef = useRef<{ constraint: Matter.Constraint; lastX: number; lastY: number; lastTime: number; vx: number; vy: number } | null>(null);
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const cacheRef = useRef(new Map<string, { evaluations: Record<number, MovieEvaluation>; ids: number[] }>());
+  const cacheRef = useRef(new Map<string, { evaluations: Record<number, MovieEvaluation>; ids: number[]; facetsComplete: boolean; facetMovieIds: number[]; detailMessage?: string }>());
 
   const activeMovies = useMemo(() => movies.filter(movie => !session.dismissedIds.includes(movie.id)), [session.dismissedIds]);
   const liftedIds = useMemo(() => session.shortlistedIds.filter(id => activeMovies.some(movie => movie.id === id)), [activeMovies, session.shortlistedIds]);
@@ -264,7 +266,7 @@ export default function Home() {
     const requestId = ++requestRef.current;
     abortRef.current?.abort();
     const cached = cacheRef.current.get(cacheKey);
-    if (cached) { setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(`${cached.ids.length} films rose to the surface.`); return; }
+    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
@@ -277,9 +279,14 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "The evaluation failed.");
       const evaluations = Object.fromEntries((data.evaluations as MovieEvaluation[]).map(evaluation => [evaluation.movieId, evaluation]));
       const ids = data.rankedEligibleIds as number[];
-      cacheRef.current.set(cacheKey, { evaluations, ids });
+      const complete = data.facetsComplete !== false;
+      const detailedIds = Array.isArray(data.facetMovieIds) ? data.facetMovieIds as number[] : [];
+      const detailMessage = typeof data.detailMessage === "string" ? data.detailMessage : undefined;
+      setFacetsComplete(complete);
+      setFacetMovieIds(detailedIds);
+      cacheRef.current.set(cacheKey, { evaluations, ids, facetsComplete: complete, facetMovieIds: detailedIds, detailMessage });
       setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations, shortlistedIds: ids }));
-      setStatus(ids.length ? `${ids.length} films rose to the surface.` : "Jev found no films that match those constraints.");
+      setStatus(detailMessage ?? (ids.length ? `${ids.length} films rose to the surface.` : "Jev found no films that match those constraints."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof DOMException && error.name === "TimeoutError") { if (requestId === requestRef.current) setStatus("Search timed out. Please try again."); return; }
@@ -287,7 +294,20 @@ export default function Home() {
     } finally { if (requestId === requestRef.current) setLoading(false); }
   }, [filters, prompt, second, session.dismissedIds, session.mode, loading]);
 
-  const clear = () => { requestRef.current += 1; abortRef.current?.abort(); setLoading(false); setSession(previous => ({ ...emptySession, dismissedIds: previous.dismissedIds })); setFilters({}); setPrompt(""); setSecond(""); setSuggestions([]); setStatus(""); };
+  const clearSearch = () => {
+    requestRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setFacetsComplete(true);
+    setFacetMovieIds([]);
+    setSession(previous => ({ ...previous, preferences: [], secondPreferences: [], filters: {}, evaluations: {}, shortlistedIds: [] }));
+    setFilters({});
+    setPrompt("");
+    setSecond("");
+    setSuggestions([]);
+    setStatus("");
+  };
   const pin = (id: number) => setSession(previous => ({ ...previous, pinnedIds: previous.pinnedIds.includes(id) ? previous.pinnedIds.filter(value => value !== id) : [...previous.pinnedIds, id] }));
   const seen = (id: number) => { setSession(previous => ({ ...previous, dismissedIds: [...previous.dismissedIds, id], pinnedIds: previous.pinnedIds.filter(value => value !== id), shortlistedIds: previous.shortlistedIds.filter(value => value !== id) })); setUndo({ id, wasPinned: session.pinnedIds.includes(id), wasShortlisted: session.shortlistedIds.includes(id) }); window.setTimeout(() => setUndo(null), 5000); };
   const restore = () => { if (!undo) return; const item = undo; setSession(previous => ({ ...previous, dismissedIds: previous.dismissedIds.filter(value => value !== item.id), pinnedIds: item.wasPinned ? [...previous.pinnedIds, item.id] : previous.pinnedIds, shortlistedIds: item.wasShortlisted ? [...previous.shortlistedIds, item.id] : previous.shortlistedIds })); setUndo(null); };
@@ -310,18 +330,18 @@ export default function Home() {
         <h1 className="sr-only">Find your next film</h1>
         <form className="search-box" onSubmit={event => { event.preventDefault(); setSuggestions([]); void evaluate(); }}>
           <label className="sr-only" htmlFor="prompt">What would you like to watch?</label>
-          <input id="prompt" type="text" value={prompt} autoComplete="off" onChange={event => setPrompt(event.target.value)} placeholder="What are you in the mood for?" />
-          {prompt && <button type="button" className="search-clear" aria-label="Clear search" onClick={clear}><X size={15} /></button>}
+          <input id="prompt" type="text" value={prompt} autoComplete="off" onChange={event => { const value = event.target.value; setPrompt(value); if (!value.trim() && prompt.trim()) clearSearch(); }} placeholder="What are you in the mood for?" />
+          {prompt && <button type="button" className="search-clear" aria-label="Clear search" onClick={clearSearch}><X size={15} /></button>}
           <button className="search-submit" type="submit" aria-label="Find my films" disabled={loading}>{loading ? <span className="loading-dot" /> : <span aria-hidden="true">↵</span>}</button>
           {suggestions.length > 0 && <div className="suggestions" aria-label="Movie title suggestions">{suggestions.map(movie => <button key={movie.id} type="button" onClick={() => { setPrompt(movie.title); setSuggestions([]); }}><img src={movie.posterPath} alt="" /><span><strong>{movie.title}</strong><small>{movie.year}</small></span></button>)}</div>}
         </form>
-        {session.mode === "duo" && <div className="second-mood"><label className="sr-only" htmlFor="second">Their mood</label><input id="second" value={second} onChange={event => setSecond(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void evaluate(); }} placeholder="And their mood…" /></div>}
+        {session.mode === "duo" && <div className="second-mood"><label className="sr-only" htmlFor="second">Their mood</label><input id="second" value={second} onChange={event => { const value = event.target.value; setSecond(value); if (!value.trim() && second.trim()) clearSearch(); }} onKeyDown={event => { if (event.key === "Enter") void evaluate(); }} placeholder="And their mood…" /></div>}
         <p className={`status ${/failed|unavailable|billing/i.test(status) ? "error" : ""}`} role="status">{status || "A mood, a story, a feeling. Press Enter."}</p>
       </section>
       <section className="result-shelf" ref={resultShelfRef} aria-label="Matching movies">{liftedIds.map(id => <span className="result-slot" key={id} aria-hidden="true" />)}</section>
       <div className="motion-layer" ref={heapRef} aria-label="Interactive movie poster heap">{activeMovies.map(movie => { const phase = phasesRef.current.get(movie.id) ?? "heap"; return <Poster key={movie.id} movie={movie} phase={phase} register={(id, element) => { if (element) posterRefs.current.set(id, element); else posterRefs.current.delete(id); }} pinned={session.pinnedIds.includes(movie.id)} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(movie.id)} onSeen={() => seen(movie.id)} onInfo={() => setDetail(movie)} />; })}</div>
     </div>
-    {detail && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setDetail(null)}><div className="detail-card" onClick={event => event.stopPropagation()}><button className="icon-btn close-detail" aria-label="Close details" onClick={() => setDetail(null)}><X size={16} /></button><div className="eyebrow">Movie detail</div><h2>{detail.title}</h2><p className="sans">{detail.overview}</p><p className="sans detail-meta">{detail.year} · {detail.runtime} minutes · {detail.genres.join(" · ")}</p>{session.evaluations[detail.id] && <div className="breakdown">{([['Mood', session.evaluations[detail.id].mood], ['Pace', session.evaluations[detail.id].pace], ['Theme', session.evaluations[detail.id].theme]] as [string, number][]).map(([label, value]) => <label key={label}><span>{label} fit</span><span>{Math.round(value * 100)}%</span><div className="bar"><i style={{ width: `${value * 100}%` }} /></div></label>)}</div>}</div></div>}
+    {detail && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setDetail(null)}><div className="detail-card" onClick={event => event.stopPropagation()}><button className="icon-btn close-detail" aria-label="Close details" onClick={() => setDetail(null)}><X size={16} /></button><div className="eyebrow">Movie detail</div><h2>{detail.title}</h2><p className="sans">{detail.overview}</p><p className="sans detail-meta">{detail.year} · {detail.runtime} minutes · {detail.genres.join(" · ")}</p>{session.evaluations[detail.id] && (facetsComplete || facetMovieIds.includes(detail.id) ? <div className="breakdown">{([['Mood', session.evaluations[detail.id].mood], ['Pace', session.evaluations[detail.id].pace], ['Theme', session.evaluations[detail.id].theme]] as [string, number][]).map(([label, value]) => <label key={label}><span>{label} fit</span><span>{Math.round(value * 100)}%</span><div className="bar"><i style={{ width: `${value * 100}%` }} /></div></label>)}</div> : <p className="sans detail-note">Detailed fit is temporarily unavailable. The overall ranking is still valid.</p>)}</div></div>}
     {surprise && <div role="dialog" aria-modal="true" className="detail-overlay" onClick={() => setSurprise(null)}><div className="surprise-card" onClick={event => event.stopPropagation()}><div className="eyebrow">Tonight’s spotlight</div><h2>{surprise.title}</h2><p>{surprise.year} · {surprise.runtime} minutes</p><button className="btn primary" onClick={() => setSurprise(null)}>Keep exploring</button></div></div>}
     {undo && <button className="btn primary undo-button" onClick={restore}><RotateCcw size={14} /> Undo seen it</button>}
   </main>;
