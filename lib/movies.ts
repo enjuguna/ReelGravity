@@ -1,6 +1,6 @@
 import type { Movie } from "./types";
 
-export const CATALOG_VERSION = "2026.09-30";
+export const CATALOG_VERSION = "2026.09-50";
 export const movies: Movie[] = [
   {
     "id": 550,
@@ -738,6 +738,496 @@ export const movies: Movie[] = [
     "mood": [
       "intense",
       "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "discovery",
+      "future"
+    ]
+  },
+  {
+    "id": 272,
+    "title": "Batman Begins",
+    "year": 2005,
+    "runtime": 140,
+    "genres": [
+      "Drama",
+      "Crime",
+      "Action"
+    ],
+    "overview": "Driven by tragedy, billionaire Bruce Wayne dedicates his life to uncovering and defeating the corruption that plagues his home, Gotham City.  Unable to work within the system, he instead creates a new identity, a symbol of fear for the criminal underworld - The Batman.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/sPX89Td70IDDjVr85jdSBb4rWGr.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 424,
+    "title": "Schindler's List",
+    "year": 1993,
+    "runtime": 195,
+    "genres": [
+      "Drama",
+      "History",
+      "War"
+    ],
+    "overview": "The true story of how businessman Oskar Schindler saved over a thousand Jewish lives from the Nazis while they worked as slaves in his factory during World War II.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 335983,
+    "title": "Venom",
+    "year": 2018,
+    "runtime": 112,
+    "genres": [
+      "Science Fiction",
+      "Action"
+    ],
+    "overview": "Investigative journalist Eddie Brock attempts a comeback following a scandal, but accidentally becomes the host of Venom, a violent, super powerful alien symbiote. Soon, he must rely on his newfound powers to protect the world from a shadowy organization looking for a symbiote of their own.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/2uNW4WbgBXL25BAbXGLnLqX71Sw.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "discovery",
+      "future"
+    ]
+  },
+  {
+    "id": 19404,
+    "title": "Dilwale Dulhania Le Jayenge",
+    "year": 1995,
+    "runtime": 190,
+    "genres": [
+      "Comedy",
+      "Drama",
+      "Romance"
+    ],
+    "overview": "Raj is a rich, carefree, happy-go-lucky second generation NRI. Simran is the daughter of Chaudhary Baldev Singh, who in spite of being an NRI is very strict about adherence to Indian values. Simran has left for India to be married to her childhood fiancé. Raj leaves for India with a mission at his hands, to claim his lady love under the noses of her whole family. Thus begins a saga.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/lfRkUr7DYdHldAqi3PwdQGBRBPM.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 11216,
+    "title": "Cinema Paradiso",
+    "year": 1988,
+    "runtime": 124,
+    "genres": [
+      "Drama",
+      "Romance"
+    ],
+    "overview": "A filmmaker recalls his childhood, when he fell in love with the movies at his village's theater and formed a deep friendship with the theater's projectionist.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/9JhfVOveaY00o8njQu2Xrp4YWud.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 152601,
+    "title": "Her",
+    "year": 2013,
+    "runtime": 126,
+    "genres": [
+      "Romance",
+      "Science Fiction",
+      "Drama"
+    ],
+    "overview": "In the not so distant future, Theodore, a lonely writer, purchases a newly developed operating system designed to meet the user's every need. To Theodore's surprise, a romantic relationship develops between him and his operating system. This unconventional love story blends science fiction and romance in a sweet tale that explores the nature of love and the ways that technology isolates and connects us all.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/eCOtqtfvn7mxGl6nfmq4b1exJRc.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "discovery",
+      "future"
+    ]
+  },
+  {
+    "id": 77338,
+    "title": "The Intouchables",
+    "year": 2011,
+    "runtime": 113,
+    "genres": [
+      "Drama",
+      "Comedy"
+    ],
+    "overview": "A true story of two men who should never have met – a quadriplegic aristocrat who was injured in a paragliding accident and a young man from the projects.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/1QU7HKgsQbGpzsJbJK4pAVQV9F5.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 696374,
+    "title": "Gabriel's Inferno",
+    "year": 2020,
+    "runtime": 122,
+    "genres": [
+      "Romance",
+      "Drama"
+    ],
+    "overview": "An intriguing and sinful exploration of seduction, forbidden love, and redemption, Gabriel's Inferno is a captivating and wildly passionate tale of one man's escape from his own personal hell as he tries to earn the impossible--forgiveness and love.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/oyG9TL7FcRP4EZ9Vid6uKzwdndz.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 102651,
+    "title": "Maleficent",
+    "year": 2014,
+    "runtime": 97,
+    "genres": [
+      "Fantasy",
+      "Adventure",
+      "Action",
+      "Family",
+      "Romance"
+    ],
+    "overview": "A beautiful, pure-hearted young woman, Maleficent has an idyllic life growing up in a peaceable forest kingdom, until one day when an invading army threatens the harmony of the land. She rises to be the land's fiercest protector, but she ultimately suffers a ruthless betrayal – an act that begins to turn her heart into stone. Bent on revenge, Maleficent faces an epic battle with the invading King's successor and, as a result, places a curse upon his newborn infant Aurora. As the child grows, Maleficent realizes that Aurora holds the key to peace in the kingdom – and to Maleficent's true happiness as well.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/ik8PugpL41s137RAWEGTAWu0dPo.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 15121,
+    "title": "The Sound of Music",
+    "year": 1965,
+    "runtime": 174,
+    "genres": [
+      "Drama",
+      "Family",
+      "Music",
+      "Romance"
+    ],
+    "overview": "In the years before World War II, a tomboyish postulant at an Austrian abbey is hired as a governess in the home of a widowed naval captain with seven children and brings a new love of life and music into the home.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/c6CrUZypAsBCaRWX0M3RVRDbhNS.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 50014,
+    "title": "The Help",
+    "year": 2011,
+    "runtime": 146,
+    "genres": [
+      "Drama"
+    ],
+    "overview": "Aibileen Clark is a middle-aged African-American maid who has spent her life raising white children and has recently lost her only son; Minny Jackson is an African-American maid who has often offended her employers despite her family's struggles with money and her desperate need for jobs; and Eugenia \"Skeeter\" Phelan is a young white woman who has recently moved back home after graduating college to find out her childhood maid has mysteriously disappeared. These three stories intertwine to explain how life in Jackson, Mississippi revolves around \"the help\"; yet they are always kept at a certain distance because of racial lines.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/3kmfoWWEc9Vtyuaf9v5VipRgdjx.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 424694,
+    "title": "Bohemian Rhapsody",
+    "year": 2018,
+    "runtime": 135,
+    "genres": [
+      "Music",
+      "Drama"
+    ],
+    "overview": "Singer Freddie Mercury, guitarist Brian May, drummer Roger Taylor and bass guitarist John Deacon take the music world by storm when they form the rock 'n' roll band Queen in 1970. Hit songs become instant classics. When Mercury's increasingly wild lifestyle starts to spiral out of control, Queen soon faces its greatest challenge yet – finding a way to keep the band together amid the success and excess.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/lHu1wtNaczFPGFDTrjCSzeLPTKN.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 568332,
+    "title": "Taylor Swift: Reputation Stadium Tour",
+    "year": 2018,
+    "runtime": 125,
+    "genres": [
+      "Music"
+    ],
+    "overview": "Taylor Swift takes the stage in Dallas for the Reputation Stadium Tour and celebrates a monumental night of music, memories and visual magic.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/u6oXUTtOuJRPdUgUuPAVVJPSKCo.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 37247,
+    "title": "The Graduate",
+    "year": 1967,
+    "runtime": 107,
+    "genres": [
+      "Drama",
+      "Romance",
+      "Comedy"
+    ],
+    "overview": "A disillusioned college graduate finds himself torn between his older lover and her daughter.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/8XaDpF0COV1MLsDirJMnxmYc1Wp.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 313369,
+    "title": "La La Land",
+    "year": 2016,
+    "runtime": 129,
+    "genres": [
+      "Comedy",
+      "Drama",
+      "Romance"
+    ],
+    "overview": "Mia, an aspiring actress, serves lattes to movie stars in between auditions and Sebastian, a jazz musician, scrapes by playing cocktail party gigs in dingy bars, but as success mounts they are faced with decisions that begin to fray the fragile fabric of their love affair, and the dreams they worked so hard to maintain in each other threaten to rip them apart.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 244786,
+    "title": "Whiplash",
+    "year": 2014,
+    "runtime": 107,
+    "genres": [
+      "Drama",
+      "Music",
+      "Thriller"
+    ],
+    "overview": "Under the direction of a ruthless instructor, a talented young drummer begins to pursue perfection at any cost, even his humanity.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/7fn624j5lj3xTme2SgiLCeuedmO.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 4247,
+    "title": "Scary Movie",
+    "year": 2000,
+    "runtime": 88,
+    "genres": [
+      "Comedy"
+    ],
+    "overview": "A familiar-looking group of teenagers find themselves being stalked by a more-than-vaguely recognizable masked killer! As the victims begin to pile up and the laughs pile on, none of your favorite scary movies escape the razor-sharp satire of this outrageously funny parody!",
+    "posterPath": "https://image.tmdb.org/t/p/w342/fVQFPRuw3yWXojYDJvA5EoFjUOY.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 550524,
+    "title": "Monday",
+    "year": 2021,
+    "runtime": 116,
+    "genres": [
+      "Drama",
+      "Romance"
+    ],
+    "overview": "A spark on a Friday can lead to a sizzling weekend fling, but what happens when you get to the inevitable Monday?",
+    "posterPath": "https://image.tmdb.org/t/p/w342/o4Gc5quiCBtiW6mgkPvDWKAiFVs.jpg",
+    "mood": [
+      "romantic",
+      "tender"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 240,
+    "title": "The Godfather Part II",
+    "year": 1974,
+    "runtime": 202,
+    "genres": [
+      "Drama",
+      "Crime"
+    ],
+    "overview": "In the continuing saga of the Corleone crime family, a young Vito Corleone grows up in Sicily and in 1910s New York. In the 1950s, Michael Corleone attempts to expand the family business into Las Vegas, Hollywood and Cuba.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/8a1lJs7mFyGhGhZZDT1azJUoQiZ.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 4977,
+    "title": "Paprika",
+    "year": 2006,
+    "runtime": 90,
+    "genres": [
+      "Animation",
+      "Science Fiction",
+      "Thriller"
+    ],
+    "overview": "Dr. Atsuko Chiba is a research psychologist who uses a device called the DC Mini to enter her patients' dreams, wherein she adopts the alter-ego \"Paprika\". When the device is stolen, she must stop rogue elements from merging the dream and waking worlds.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/nHJljo2Pi7XimYEgV9hvRchQWmg.jpg",
+    "mood": [
+      "wonder",
+      "hopeful"
     ],
     "pace": [
       "propulsive",

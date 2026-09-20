@@ -7,6 +7,8 @@ import { movies } from "@/lib/movies";
 import type { HardFilters, Movie, MovieEvaluation, MoodSnapshot } from "@/lib/types";
 
 type PosterPhase = "heap" | "lifting" | "result" | "returning";
+type ResultFreshness = "fresh" | "stale" | "empty";
+type SearchSnapshot = { query: string; other: string; filters: HardFilters; mode: "solo" | "duo" };
 type PosterTarget = { x: number; y: number; angle: number };
 type PosterMotion = { phase: PosterPhase; target?: PosterTarget; transitionId: number };
 type PosterProps = { movie: Movie; phase: PosterPhase; pinned: boolean; register: (id: number, element: HTMLElement | null) => void; onPin: () => void; onSeen: () => void; onInfo: () => void; onDragStart: (id: number, x: number, y: number) => void; onDragMove: (x: number, y: number) => void; onDragEnd: () => void };
@@ -24,9 +26,14 @@ const ENGINE_FRICTION_AIR = 0.02;
 const ENGINE_DENSITY = 0.0015;
 
 function parseRuntime(text: string): HardFilters {
-  const max = text.match(/(?:under|below|at most)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
+  const max = text.match(/(?:under|below|at most|<|<=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
   const between = text.match(/between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*minutes?/i);
   return between ? { runtimeMin: Number(between[1]), runtimeMax: Number(between[2]) } : max ? { runtimeMax: Number(max) } : {};
+}
+
+function filterSummary(filters: HardFilters) {
+  const values = [filters.genre, filters.runtimeMax ? `under ${filters.runtimeMax} min` : "", filters.runtimeMin ? `from ${filters.runtimeMin} min` : "", filters.yearMin ? `from ${filters.yearMin}` : "", filters.yearMax ? `through ${filters.yearMax}` : ""].filter(Boolean);
+  return values.join(" · ");
 }
 
 function Poster({ movie, phase, pinned, register, onPin, onSeen, onInfo, onDragStart, onDragMove, onDragEnd }: PosterProps) {
@@ -52,6 +59,11 @@ export default function Home() {
   const [filters, setFilters] = useState<HardFilters>({});
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [resultFreshness, setResultFreshness] = useState<ResultFreshness>("empty");
+  const [displayedQuery, setDisplayedQuery] = useState("");
+  const [displayedFilters, setDisplayedFilters] = useState<HardFilters>({});
+  const [retryableFailure, setRetryableFailure] = useState(false);
+  const [retrySnapshot, setRetrySnapshot] = useState<SearchSnapshot | null>(null);
   const [facetsComplete, setFacetsComplete] = useState(true);
   const [facetMovieIds, setFacetMovieIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<Movie | null>(null);
@@ -256,17 +268,19 @@ export default function Home() {
     dragRef.current = null;
   }, []);
 
-  const evaluate = useCallback(async () => {
+  const evaluate = useCallback(async (requested?: SearchSnapshot) => {
     if (loading) return;
-    const query = prompt.trim();
-    const other = second.trim();
+    const query = requested?.query ?? prompt.trim();
+    const other = requested?.other ?? second.trim();
     if (query.length < 5 && other.length < 5) { setStatus("Type at least five characters, then press Enter to search."); return; }
-    const nextFilters = { ...filters, ...parseRuntime(query) };
-    const cacheKey = JSON.stringify({ query, other, mode: session.mode, filters: nextFilters, excluded: session.dismissedIds });
+    const nextFilters = requested?.filters ?? { ...filters, ...parseRuntime(query) };
+    const mode = requested?.mode ?? session.mode;
+    const snapshot = { query, other, filters: nextFilters, mode } satisfies SearchSnapshot;
+    const cacheKey = JSON.stringify({ query, other, mode, filters: nextFilters, excluded: session.dismissedIds });
     const requestId = ++requestRef.current;
     abortRef.current?.abort();
     const cached = cacheRef.current.get(cacheKey);
-    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
+    if (cached) { setFacetsComplete(cached.facetsComplete); setFacetMovieIds(cached.facetMovieIds); setDisplayedQuery(query); setDisplayedFilters(nextFilters); setResultFreshness(cached.ids.length ? "fresh" : "empty"); setRetrySnapshot(null); setRetryableFailure(false); setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: cached.evaluations, shortlistedIds: cached.ids })); setStatus(cached.detailMessage ?? `${cached.ids.length} films rose to the surface.`); return; }
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
@@ -276,7 +290,7 @@ export default function Home() {
       const response = await fetch("/api/evaluate", { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), body: JSON.stringify({ preferences: query ? [query] : [], secondPreferences: other ? [other] : [], mode: session.mode, filters: nextFilters, excludedIds: session.dismissedIds }) });
       const data = await response.json();
       if (requestId !== requestRef.current) return;
-      if (!response.ok) throw new Error(data.error || "The evaluation failed.");
+      if (!response.ok) { const failure = new Error(data.error || "The evaluation failed."); Object.assign(failure, { retryable: data.retryable === true, code: data.code, generationId: data.generationId, retryAfter: data.retryAfter }); throw failure; }
       const evaluations = Object.fromEntries((data.evaluations as MovieEvaluation[]).map(evaluation => [evaluation.movieId, evaluation]));
       const ids = data.rankedEligibleIds as number[];
       const complete = data.facetsComplete !== false;
@@ -284,15 +298,28 @@ export default function Home() {
       const detailMessage = typeof data.detailMessage === "string" ? data.detailMessage : undefined;
       setFacetsComplete(complete);
       setFacetMovieIds(detailedIds);
+      setDisplayedQuery(query);
+      setDisplayedFilters(nextFilters);
+      setResultFreshness(ids.length ? "fresh" : "empty");
+      setRetrySnapshot(null);
+      setRetryableFailure(false);
       cacheRef.current.set(cacheKey, { evaluations, ids, facetsComplete: complete, facetMovieIds: detailedIds, detailMessage });
       setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations, shortlistedIds: ids }));
       setStatus(detailMessage ?? (ids.length ? `${ids.length} films rose to the surface.` : "Jev found no films that match those constraints."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof DOMException && error.name === "TimeoutError") { if (requestId === requestRef.current) setStatus("Search timed out. Please try again."); return; }
-      if (requestId === requestRef.current) setStatus(error instanceof Error ? error.message : "The evaluation failed. Try again.");
+      if (requestId === requestRef.current) {
+        const failure = error as Error & { retryable?: boolean; code?: string; retryAfter?: number };
+        setRetrySnapshot(snapshot);
+        setRetryableFailure(failure.retryable === true || failure.code === "provider");
+        setResultFreshness(liftedIds.length ? "stale" : "empty");
+        setStatus(liftedIds.length ? `${failure.message || "Jev could not complete this search."} Showing results for: ${displayedQuery || "the previous search"}.` : (failure.message || "The evaluation failed. Try again."));
+      }
     } finally { if (requestId === requestRef.current) setLoading(false); }
-  }, [filters, prompt, second, session.dismissedIds, session.mode, loading]);
+  }, [displayedQuery, filters, liftedIds.length, loading, prompt, second, session.dismissedIds, session.mode]);
+
+  const retrySearch = () => { if (!retrySnapshot) return; setPrompt(retrySnapshot.query); setSecond(retrySnapshot.other); setFilters(retrySnapshot.filters); void evaluate(retrySnapshot); };
 
   const clearSearch = () => {
     requestRef.current += 1;
@@ -301,6 +328,11 @@ export default function Home() {
     setLoading(false);
     setFacetsComplete(true);
     setFacetMovieIds([]);
+    setResultFreshness("empty");
+    setDisplayedQuery("");
+    setDisplayedFilters({});
+    setRetrySnapshot(null);
+    setRetryableFailure(false);
     setSession(previous => ({ ...previous, preferences: [], secondPreferences: [], filters: {}, evaluations: {}, shortlistedIds: [] }));
     setFilters({});
     setPrompt("");
@@ -337,6 +369,7 @@ export default function Home() {
         </form>
         {session.mode === "duo" && <div className="second-mood"><label className="sr-only" htmlFor="second">Their mood</label><input id="second" value={second} onChange={event => { const value = event.target.value; setSecond(value); if (!value.trim() && second.trim()) clearSearch(); }} onKeyDown={event => { if (event.key === "Enter") void evaluate(); }} placeholder="And their mood…" /></div>}
         <p className={`status ${/failed|unavailable|billing/i.test(status) ? "error" : ""}`} role="status">{status || "A mood, a story, a feeling. Press Enter."}</p>
+        {(resultFreshness === "stale" || retryableFailure) && <div className="stale-results" role="status"><span>{resultFreshness === "stale" ? <>Showing the previous successful search: <strong>{displayedQuery}</strong>{filterSummary(displayedFilters) && ` · ${filterSummary(displayedFilters)}`}</> : "Jev could not complete this search."}</span>{retryableFailure && <button type="button" className="retry-search" onClick={retrySearch}>Retry search</button>}</div>}
       </section>
       <section className="result-shelf" ref={resultShelfRef} aria-label="Matching movies">{liftedIds.map(id => <span className="result-slot" key={id} aria-hidden="true" />)}</section>
       <div className="motion-layer" ref={heapRef} aria-label="Interactive movie poster heap">{activeMovies.map(movie => { const phase = phasesRef.current.get(movie.id) ?? "heap"; return <Poster key={movie.id} movie={movie} phase={phase} register={(id, element) => { if (element) posterRefs.current.set(id, element); else posterRefs.current.delete(id); }} pinned={session.pinnedIds.includes(movie.id)} onDragStart={startDrag} onDragMove={moveDrag} onDragEnd={endDrag} onPin={() => pin(movie.id)} onSeen={() => seen(movie.id)} onInfo={() => setDetail(movie)} />; })}</div>
