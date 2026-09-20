@@ -1,6 +1,6 @@
 import type { Movie } from "./types";
 
-export const CATALOG_VERSION = "2026.09-50";
+export const CATALOG_VERSION = "2026.09-75";
 export const movies: Movie[] = [
   {
     "id": 550,
@@ -1236,6 +1236,629 @@ export const movies: Movie[] = [
     "theme": [
       "discovery",
       "future"
+    ]
+  },
+  {
+    "id": 109445,
+    "title": "Frozen",
+    "year": 2013,
+    "runtime": 102,
+    "genres": [
+      "Animation",
+      "Family",
+      "Adventure",
+      "Fantasy"
+    ],
+    "overview": "Young princess Anna of Arendelle dreams about finding true love at her sister Elsa’s coronation. Fate takes her on a dangerous journey in an attempt to end the eternal winter that has fallen over the kingdom. She's accompanied by ice delivery man Kristoff, his reindeer Sven, and snowman Olaf. On an adventure where she will find out what friendship, courage, family, and true love really means.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/itAKcobTYGpYT8Phwjd8c9hleTo.jpg",
+    "mood": [
+      "wonder",
+      "hopeful"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 49026,
+    "title": "The Dark Knight Rises",
+    "year": 2012,
+    "runtime": 165,
+    "genres": [
+      "Action",
+      "Crime",
+      "Drama",
+      "Thriller"
+    ],
+    "overview": "Following the death of District Attorney Harvey Dent, Batman assumes responsibility for Dent's crimes to protect the late attorney's reputation and is subsequently hunted by the Gotham City Police Department. Eight years later, Batman encounters the mysterious Selina Kyle and the villainous Bane, a new terrorist leader who overwhelms Gotham's finest. The Dark Knight resurfaces to protect a city that has branded him an enemy.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/hr0L2aueqlP2BYUblTTjmtn0hw4.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 8587,
+    "title": "The Lion King",
+    "year": 1994,
+    "runtime": 89,
+    "genres": [
+      "Animation",
+      "Family",
+      "Drama"
+    ],
+    "overview": "Young lion prince Simba, eager to one day become king of the Pride Lands, grows up under the watchful eye of his father Mufasa; all the while his villainous uncle Scar conspires to take the throne for himself. Amid betrayal and tragedy, Simba must confront his past and find his rightful place in the Circle of Life.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/sKCr78MXSLixwmZ8DyJLrpMsd15.jpg",
+    "mood": [
+      "wonder",
+      "hopeful"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 120,
+    "title": "The Lord of the Rings: The Fellowship of the Ring",
+    "year": 2001,
+    "runtime": 179,
+    "genres": [
+      "Adventure",
+      "Fantasy",
+      "Action"
+    ],
+    "overview": "Young hobbit Frodo Baggins, after inheriting a mysterious ring from his uncle Bilbo, must leave his home in order to keep it from falling into the hands of its evil creator. Along the way, a fellowship is formed to protect the ringbearer and make sure that the ring arrives at its final destination: Mt. Doom, the only place where it can be destroyed.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/6oom5QYQ2yQTMJIbnvbkBL9cHo6.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 238,
+    "title": "The Godfather",
+    "year": 1972,
+    "runtime": 175,
+    "genres": [
+      "Drama",
+      "Crime"
+    ],
+    "overview": "Spanning the years 1945 to 1955, a chronicle of the fictional Italian-American Corleone crime family. When organized crime family patriarch, Vito Corleone barely survives an attempt on his life, his youngest son, Michael steps in to take care of the would-be killers, launching a campaign of bloody revenge.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/3bhkrj58Vtu7enYsRolD1fZdja1.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 598,
+    "title": "City of God",
+    "year": 2002,
+    "runtime": 129,
+    "genres": [
+      "Drama",
+      "Crime"
+    ],
+    "overview": "In the poverty-stricken favelas of Rio de Janeiro in the 1970s, two young men choose different paths. Rocket is a budding photographer who documents the increasing drug-related violence of his neighborhood, while José “Zé” Pequeno is an ambitious drug dealer diving into a dangerous life of crime.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/k7eYdWvhYQyRQoU2TB2A2Xu2TfD.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 637,
+    "title": "Life Is Beautiful",
+    "year": 1997,
+    "runtime": 116,
+    "genres": [
+      "Comedy",
+      "Drama"
+    ],
+    "overview": "A touching story of an Italian book seller of Jewish ancestry who lives in his own little fairy tale. His creative and happy life would come to an abrupt halt when his entire family is deported to a concentration camp during World War II. While locked up he tries to convince his son that the whole thing is just a game.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/74hLDKjD5aGYOotO6esUVaeISa2.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 807,
+    "title": "Se7en",
+    "year": 1995,
+    "runtime": 127,
+    "genres": [
+      "Crime",
+      "Mystery",
+      "Thriller"
+    ],
+    "overview": "Two homicide detectives are on a desperate hunt for a serial killer whose crimes are based on the \"seven deadly sins\" in this dark and haunting film that takes viewers from the tortured remains of one victim to the next. The seasoned Det. Somerset researches each sin in an effort to get inside the killer's mind, while his novice partner, Mills, scoffs at his efforts to unravel the case.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/191nKfP0ehp3uIvWqgPbFmI4lv9.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 769,
+    "title": "GoodFellas",
+    "year": 1990,
+    "runtime": 145,
+    "genres": [
+      "Drama",
+      "Crime"
+    ],
+    "overview": "The true story of Henry Hill, a half-Irish, half-Sicilian Brooklyn kid who is adopted by neighbourhood gangsters at an early age and climbs the ranks of a Mafia family under the guidance of Jimmy Conway.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/9OkCLM73MIU2CrKZbqiT8Ln1wY2.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 510,
+    "title": "One Flew Over the Cuckoo's Nest",
+    "year": 1975,
+    "runtime": 135,
+    "genres": [
+      "Drama"
+    ],
+    "overview": "A petty criminal fakes insanity to serve his sentence in a mental ward rather than prison. He soon finds himself as a leader to the other patients—and an enemy to the cruel, domineering nurse who runs the ward.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/kjWsMh72V6d8KRLV4EOoSJLT1H7.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 539,
+    "title": "Psycho",
+    "year": 1960,
+    "runtime": 109,
+    "genres": [
+      "Horror",
+      "Thriller",
+      "Mystery"
+    ],
+    "overview": "When larcenous real estate clerk Marion Crane goes on the lam with a wad of cash and hopes of starting a new life, she ends up at the notorious Bates Motel, where manager Norman Bates cares for his housebound mother.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/yz4QVqPx3h1hD1DfqqQkCq3rmxW.jpg",
+    "mood": [
+      "dark",
+      "tense"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 10681,
+    "title": "WALL·E",
+    "year": 2008,
+    "runtime": 98,
+    "genres": [
+      "Animation",
+      "Family",
+      "Science Fiction"
+    ],
+    "overview": "After hundreds of years doing what he was built for, WALL•E— a robot designed to clean up the earth—discovers a new purpose in life when he meets a sleek search robot named EVE. EVE comes to realize that WALL•E has inadvertently stumbled upon the key to the planet's future, and races back to space to report to the humans. Meanwhile, WALL•E chases EVE across the galaxy and sets into motion one of the most imaginative adventures ever brought to the big screen.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/hbhFnRzzg6ZDmm8YAmxBnQpQIPh.jpg",
+    "mood": [
+      "wonder",
+      "hopeful"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 10193,
+    "title": "Toy Story 3",
+    "year": 2010,
+    "runtime": 103,
+    "genres": [
+      "Animation",
+      "Family",
+      "Comedy"
+    ],
+    "overview": "Woody, Buzz, and the rest of Andy's toys haven't been played with in years. With Andy about to go to college, the gang find themselves accidentally left at a nefarious day care center. The toys must band together to escape and return home to Andy.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/AbbXspMOwdvwWZgVN0nabZq03Ec.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 10191,
+    "title": "How to Train Your Dragon",
+    "year": 2010,
+    "runtime": 98,
+    "genres": [
+      "Fantasy",
+      "Adventure",
+      "Animation",
+      "Family"
+    ],
+    "overview": "As the son of a Viking leader on the cusp of manhood, shy Hiccup Horrendous Haddock III faces a rite of passage: he must kill a dragon to prove his warrior mettle. But after downing a feared dragon, he realizes that he no longer wants to destroy it, and instead befriends the beast – which he names Toothless – much to the chagrin of his warrior father.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/ygGmAO60t8GyqUo9xYeYxSZAR3b.jpg",
+    "mood": [
+      "wonder",
+      "hopeful"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 150540,
+    "title": "Inside Out",
+    "year": 2015,
+    "runtime": 95,
+    "genres": [
+      "Animation",
+      "Family",
+      "Adventure",
+      "Drama",
+      "Comedy"
+    ],
+    "overview": "When 11-year-old Riley moves to a new city, her Emotions team up to help her through the transition. Joy, Fear, Anger, Disgust and Sadness work together, but when Joy and Sadness get lost, they must journey through unfamiliar places to get back home.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/2H1TmgdfNtsKlU9jKdeNyYL5y8T.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 508943,
+    "title": "Luca",
+    "year": 2021,
+    "runtime": 95,
+    "genres": [
+      "Animation",
+      "Family",
+      "Fantasy",
+      "Drama",
+      "Comedy"
+    ],
+    "overview": "Luca and his best friend Alberto experience an unforgettable summer on the Italian Riviera. But all the fun is threatened by a deeply-held secret: they are sea monsters from another world just below the water’s surface.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/9x4i9uKGXt8IiiIF5Ey0DIoY738.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 508947,
+    "title": "Turning Red",
+    "year": 2022,
+    "runtime": 100,
+    "genres": [
+      "Animation",
+      "Family",
+      "Comedy",
+      "Fantasy"
+    ],
+    "overview": "Thirteen-year-old Mei is experiencing the awkwardness of being a teenager with a twist – when she gets too excited, she transforms into a giant red panda.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/qsdjk9oAKSQMWs0Vt5Pyfh6O4GZ.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 466272,
+    "title": "Once Upon a Time... in Hollywood",
+    "year": 2019,
+    "runtime": 162,
+    "genres": [
+      "Comedy",
+      "Drama",
+      "Thriller"
+    ],
+    "overview": "Los Angeles, 1969. TV star Rick Dalton, a struggling actor specializing in westerns, and stuntman Cliff Booth, his best friend, try to survive in a constantly changing movie industry. Dalton is the neighbor of the young and promising actress and model Sharon Tate, who has just married the prestigious Polish director Roman Polanski…",
+    "posterPath": "https://image.tmdb.org/t/p/w342/8j58iEBw9pOXFD2L0nt0ZXeHviB.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 14160,
+    "title": "Up",
+    "year": 2009,
+    "runtime": 96,
+    "genres": [
+      "Animation",
+      "Comedy",
+      "Family",
+      "Adventure"
+    ],
+    "overview": "Carl Fredricksen spent his entire life dreaming of exploring the globe and experiencing life to its fullest. But at age 78, life seems to have passed him by, until a twist of fate (and a persistent 8-year old Wilderness Explorer named Russell) gives him a new lease on life.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/mFvoEwSfLqbcWwFsDjQebn9bzFe.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "family",
+      "belonging"
+    ]
+  },
+  {
+    "id": 499,
+    "title": "Cléo from 5 to 7",
+    "year": 1962,
+    "runtime": 90,
+    "genres": [
+      "Drama"
+    ],
+    "overview": "Agnès Varda eloquently captures Paris in the sixties with this real-time portrait of a singer set adrift in the city as she awaits test results of a biopsy. A chronicle of the minutes of one woman’s life, Cléo from 5 to 7 is a spirited mix of vivid vérité and melodrama, featuring a score by Michel Legrand and cameos by Jean-Luc Godard and Anna Karina.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/oelBStY4xpguaplRv15P3Za7Xsr.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 1891,
+    "title": "The Empire Strikes Back",
+    "year": 1980,
+    "runtime": 124,
+    "genres": [
+      "Adventure",
+      "Action",
+      "Science Fiction"
+    ],
+    "overview": "The epic saga continues as Luke Skywalker, in hopes of defeating the evil Galactic Empire, learns the ways of the Jedi from aging master Yoda. But Darth Vader is more determined than ever to capture Luke. Meanwhile, rebel leader Princess Leia, cocky Han Solo, Chewbacca, and droids C-3PO and R2-D2 are thrown into various stages of capture, betrayal and despair.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/nNAeTmF4CtdSgMDplXTDPOpYzsX.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "discovery",
+      "future"
+    ]
+  },
+  {
+    "id": 12445,
+    "title": "Harry Potter and the Deathly Hallows: Part 2",
+    "year": 2011,
+    "runtime": 130,
+    "genres": [
+      "Adventure",
+      "Fantasy"
+    ],
+    "overview": "Harry, Ron and Hermione continue their quest to vanquish the evil Voldemort once and for all. Just as things begin to look hopeless for the young wizards, Harry discovers a trio of magical objects that endow him with powers to rival Voldemort's formidable skills.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/c54HpQmuwXjHq2C9wmoACjxoom3.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 675,
+    "title": "Harry Potter and the Order of the Phoenix",
+    "year": 2007,
+    "runtime": 138,
+    "genres": [
+      "Adventure",
+      "Fantasy"
+    ],
+    "overview": "When a new professor's methods leave Hogwarts unprepared to fight the rising tide of evil, Harry teaches students how to defend against the dark arts.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/5aOyriWkPec0zUDxmHFP9qMmBaj.jpg",
+    "mood": [
+      "thoughtful",
+      "immersive"
+    ],
+    "pace": [
+      "measured",
+      "absorbing"
+    ],
+    "theme": [
+      "identity",
+      "connection"
+    ]
+  },
+  {
+    "id": 106646,
+    "title": "The Wolf of Wall Street",
+    "year": 2013,
+    "runtime": 180,
+    "genres": [
+      "Crime",
+      "Drama",
+      "Comedy"
+    ],
+    "overview": "A New York stockbroker refuses to cooperate in a large securities fraud case involving corruption on Wall Street, corporate banking world and mob infiltration. Based on Jordan Belfort's autobiography.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/kW9LmvYHAaS9iA0tHmZVq8hQYoq.jpg",
+    "mood": [
+      "playful",
+      "warm"
+    ],
+    "pace": [
+      "brisk",
+      "lively"
+    ],
+    "theme": [
+      "justice",
+      "consequence"
+    ]
+  },
+  {
+    "id": 346,
+    "title": "Seven Samurai",
+    "year": 1954,
+    "runtime": 207,
+    "genres": [
+      "Action",
+      "Drama"
+    ],
+    "overview": "A samurai answers a village's request for protection after he falls on hard times. The town needs protection from bandits, so the samurai gathers six others to help him teach the people how to defend themselves, and the villagers provide the soldiers with food.",
+    "posterPath": "https://image.tmdb.org/t/p/w342/lOMGc8bnSwQhS4XyE1S99uH8NXf.jpg",
+    "mood": [
+      "intense",
+      "adventurous"
+    ],
+    "pace": [
+      "propulsive",
+      "kinetic"
+    ],
+    "theme": [
+      "identity",
+      "connection"
     ]
   }
 ];

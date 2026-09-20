@@ -11,7 +11,11 @@ const seedIds = [
   // Additional high-signal titles used to fill the expanded catalog.
   272, 424, 335983, 19404, 11216, 152601, 77338, 696374,
   102651, 15121, 50014, 424694, 568332, 37247, 313369, 244786,
-  4247, 550524, 240, 4977, 109445, 49026, 8587, 120
+  4247, 550524, 240, 4977, 109445, 49026, 8587, 120,
+  // Additional verified titles for the 75-title catalog.
+  238, 598, 637, 807, 769, 510, 539, 10681, 10193, 10191,
+  150540, 508943, 508947, 466272, 14160, 499, 1891, 12445, 675,
+  862, 497, 106646, 694, 37247, 346
 ];
 const headers = { Authorization: `Bearer ${token}` };
 
@@ -32,18 +36,18 @@ function tags(genres) {
 }
 
 const discovered = [];
-for (let page = 1; page <= 8 && discovered.length < 50; page += 1) {
+for (let page = 1; page <= 10 && discovered.length < 75; page += 1) {
   const data = await api(`/discover/movie?include_adult=false&include_video=false&language=en-US&page=${page}&sort_by=vote_count.desc&vote_count.gte=5000`);
   discovered.push(...data.results.map(movie => movie.id));
 }
-const ids = [...new Set([...seedIds, ...discovered])].slice(0, 50);
+const ids = [...new Set([...seedIds, ...discovered])].slice(0, 75);
 const details = await Promise.all(ids.map(id => api(`/movie/${id}?language=en-US`)));
 const movies = details.filter(movie => movie.poster_path && movie.title && movie.release_date).map(movie => {
   const genres = movie.genres.map(genre => genre.name).filter(Boolean);
   return { id: movie.id, title: movie.title, year: Number(movie.release_date.slice(0, 4)), runtime: movie.runtime || 0, genres, overview: movie.overview || `${movie.title} (${movie.release_date.slice(0, 4)}).`, posterPath: `https://image.tmdb.org/t/p/w342${movie.poster_path}`, ...tags(genres) };
 });
-if (movies.length !== 50 || new Set(movies.map(movie => movie.id)).size !== 50) throw new Error(`Expected 50 unique movies, received ${movies.length}.`);
+if (movies.length !== 75 || new Set(movies.map(movie => movie.id)).size !== 75) throw new Error(`Expected 75 unique movies, received ${movies.length}.`);
 
-const file = `import type { Movie } from "./types";\n\nexport const CATALOG_VERSION = "2026.09-50";\nexport const movies: Movie[] = ${JSON.stringify(movies, null, 2)};\nexport function getMovie(id: number) { return movies.find(movie => movie.id === id); }\n`;
+const file = `import type { Movie } from "./types";\n\nexport const CATALOG_VERSION = "2026.09-75";\nexport const movies: Movie[] = ${JSON.stringify(movies, null, 2)};\nexport function getMovie(id: number) { return movies.find(movie => movie.id === id); }\n`;
 await writeFile(new URL("../lib/movies.ts", import.meta.url), file);
 console.log(`Imported ${movies.length} verified TMDB movies.`);

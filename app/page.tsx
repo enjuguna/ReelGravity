@@ -47,7 +47,7 @@ function Poster({ movie, phase, pinned, register, onPin, onSeen, onInfo, onDragS
     onPointerCancel={() => { pointerId.current = null; onDragEnd(); }}>
     <div className="poster-actions"><button className="icon-btn" aria-label={pinned ? "Unpin movie" : "Pin movie"} onClick={onPin}>{pinned ? <Heart size={13} fill="currentColor" /> : <Bookmark size={13} />}</button><button className="icon-btn" aria-label="Seen it" onClick={onSeen}><Check size={13} /></button><button className="icon-btn" aria-label="Movie details" onClick={onInfo}><Sparkles size={13} /></button></div>
     {pinned && <span className="pinned-ribbon">PINNED</span>}
-    {movie.posterPath && !broken ? <img src={movie.posterPath} alt="" onError={() => setBroken(true)} /> : <div className="poster-fallback"><strong>{movie.title}</strong><small>{movie.year} · {movie.runtime} min</small></div>}
+    {movie.posterPath && !broken ? <img src={movie.posterPath} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} /> : <div className="poster-fallback"><strong>{movie.title}</strong><small>{movie.year} · {movie.runtime} min</small></div>}
     <div className="poster-info"><strong>{movie.title}</strong><span>{movie.year} · {movie.runtime} min</span></div>
   </article>;
 }

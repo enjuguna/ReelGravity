@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { CATALOG_VERSION, movies } from "@/lib/movies";
-import { applyHardFilters, fallbackEligible } from "@/lib/ranking";
+import { applyHardFilters, fallbackEligible, selectPrimaryCandidates } from "@/lib/ranking";
 import { createState, errorDetails, evaluateStage, isRetryableProviderError, scoreFromAnswer, SCORE_CRITERIA } from "@/lib/jev";
 import type { HardFilters, Movie, MovieEvaluation } from "@/lib/types";
 
@@ -27,8 +27,8 @@ function answerScores(result: { answers: Record<string, unknown> }, batch: Movie
   return Object.fromEntries(batch.map(movie => [movie.id, scoreFromAnswer(result.answers[`m${movie.id}_overall`])]));
 }
 
-function response(evaluations: MovieEvaluation[], filters: HardFilters, resultSource: "jev" | "mixed" | "fallback", detailMessage?: string) {
-  return NextResponse.json({ evaluations, rankedEligibleIds: evaluations.filter(score => score.eligible).map(score => score.movieId), appliedFilters: filters, facetsComplete: false, facetMovieIds: [], resultSource, ...(detailMessage ? { detailMessage } : {}) });
+function response(evaluations: MovieEvaluation[], filters: HardFilters, metadata: { resultSource: "jev" | "mixed" | "fallback"; candidateCount: number; evaluatedCandidateCount: number; coveragePending: boolean }, detailMessage?: string) {
+  return NextResponse.json({ evaluations, rankedEligibleIds: evaluations.filter(score => score.eligible).map(score => score.movieId), appliedFilters: filters, facetsComplete: false, facetMovieIds: [], ...metadata, ...(detailMessage ? { detailMessage } : {}) });
 }
 
 export async function POST(request: Request) {
@@ -53,15 +53,19 @@ export async function POST(request: Request) {
     const fallback = fallbackEligible(candidates, preferences.join(" "));
     emergencyEvaluations = fallback.evaluations;
     console.info("[search] received", { requestId, queryHash: queryHash(preferences), mode, candidateCount: candidates.length, durationMs: Date.now() - started });
-    if (!candidates.length) return response([], filters, "fallback");
-    if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) return response(fallback.evaluations, filters, "fallback", "Showing instant matches.");
-    if (active >= 2) return response(fallback.evaluations, filters, "fallback", "Showing instant matches while Jev is busy.");
+    if (!candidates.length) return response([], filters, { resultSource: "fallback", candidateCount: 0, evaluatedCandidateCount: 0, coveragePending: false });
+    if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) return response(fallback.evaluations, filters, { resultSource: "fallback", candidateCount: candidates.length, evaluatedCandidateCount: 0, coveragePending: false }, "Showing instant matches.");
+    if (active >= 2) return response(fallback.evaluations, filters, { resultSource: "fallback", candidateCount: candidates.length, evaluatedCandidateCount: 0, coveragePending: true }, "Showing instant matches while Jev is busy.");
     active += 1;
     acquired = true;
 
-    const baseKey = JSON.stringify([CATALOG_VERSION, preferences, mode, filters, [...excludedIds].sort(), candidates.map(movie => movie.id)]);
-    const batches = Array.from({ length: Math.ceil(candidates.length / OVERALL_BATCH_SIZE) }, (_, index) => candidates.slice(index * OVERALL_BATCH_SIZE, (index + 1) * OVERALL_BATCH_SIZE));
+    const plan = selectPrimaryCandidates(candidates, preferences.join(" "));
+    const primary = plan.primary;
+    const baseKey = JSON.stringify([CATALOG_VERSION, preferences, mode, filters, [...excludedIds].sort(), primary.map(movie => movie.id)]);
+    const batches = Array.from({ length: Math.ceil(primary.length / OVERALL_BATCH_SIZE) }, (_, index) => primary.slice(index * OVERALL_BATCH_SIZE, (index + 1) * OVERALL_BATCH_SIZE));
     const mergedScores: Record<number, number> = Object.fromEntries(fallback.evaluations.map(item => [item.movieId, item.overall]));
+    const jevScores: Record<number, number> = {};
+    const evaluatedIds = new Set<number>();
     let fallbackCount = 0;
     const pending = batches.map((batch, index) => ({ batch, index, key: JSON.stringify([baseKey, "overall", index, batch.map(movie => movie.id)]) })).filter(item => {
       const cached = overallCache.get(item.key);
@@ -75,16 +79,42 @@ export async function POST(request: Request) {
       overallCache.set(key, { expires: Date.now() + CACHE_TTL, scores });
       return scores;
     }));
-    settled.forEach(result => { if (result.status === "fulfilled") Object.assign(mergedScores, result.value); else fallbackCount += 1; });
+    settled.forEach((result, index) => { if (result.status === "fulfilled") { Object.assign(mergedScores, result.value); Object.assign(jevScores, result.value); batches[index].forEach(movie => evaluatedIds.add(movie.id)); } else fallbackCount += 1; });
+
+    const primaryEligible = primary.filter(movie => mergedScores[movie.id] >= 0.6).length;
+    const jevStrong = Object.values(jevScores).some(score => score >= 0.6);
+    const narrowBoundary = Object.values(jevScores).some(score => score >= 0.55 && score <= 0.65);
+    const needsCoverage = plan.coverage.length > 0 && (primaryEligible < 6 || !jevStrong || narrowBoundary);
+    let coveragePending = plan.coverage.length > 0 && !needsCoverage;
+    if (needsCoverage) {
+      const coverageBatch = plan.coverage.slice(0, OVERALL_BATCH_SIZE);
+      const coverageKey = JSON.stringify([CATALOG_VERSION, preferences, mode, filters, [...excludedIds].sort(), "coverage", coverageBatch.map(movie => movie.id)]);
+      const cachedCoverage = overallCache.get(coverageKey);
+      try {
+        const scores = cachedCoverage && cachedCoverage.expires > Date.now()
+          ? cachedCoverage.scores
+          : answerScores(await evaluateStage("coverage", createState(preferences, coverageBatch, filters, mode), overallQuestions(coverageBatch), request, deadline, requestId, 100), coverageBatch);
+        if (!cachedCoverage || cachedCoverage.expires <= Date.now()) { cacheTrim(overallCache); overallCache.set(coverageKey, { expires: Date.now() + CACHE_TTL, scores }); }
+        Object.assign(mergedScores, scores);
+        Object.assign(jevScores, scores);
+        coverageBatch.forEach(movie => evaluatedIds.add(movie.id));
+        coveragePending = plan.coverage.length > coverageBatch.length;
+      } catch (error) {
+        fallbackCount += 1;
+        coveragePending = true;
+        console.error("[search] coverage degraded", { requestId, queryHash: queryHash(preferences), candidateCount: coverageBatch.length, ...errorDetails(error) });
+      }
+    }
     const evaluations = candidates.map(movie => { const overall = mergedScores[movie.id]; return { movieId: movie.id, overall, mood: overall, pace: overall, theme: overall, eligible: overall >= 0.6 }; }).sort((a, b) => b.overall - a.overall);
-    const source = fallbackCount ? (fallbackCount === batches.length ? "fallback" : "mixed") : "jev";
-    console.info("[search] completed", { requestId, queryHash: queryHash(preferences), candidateCount: candidates.length, batchCount: batches.length, failedBatches: fallbackCount, resultSource: source, durationMs: Date.now() - started });
-    return response(evaluations, filters, source, source === "fallback" ? "Showing instant matches while Jev reconnects." : undefined);
+    const hasUnevaluatedEligible = evaluations.some(item => item.eligible && !evaluatedIds.has(item.movieId));
+    const source = fallbackCount ? (fallbackCount >= batches.length + (needsCoverage ? 1 : 0) ? "fallback" : "mixed") : hasUnevaluatedEligible ? "mixed" : "jev";
+    console.info("[search] completed", { requestId, queryHash: queryHash(preferences), candidateCount: candidates.length, evaluatedCandidateCount: evaluatedIds.size, primaryCandidateCount: primary.length, coveragePending, batchCount: batches.length, failedBatches: fallbackCount, resultSource: source, durationMs: Date.now() - started });
+    return response(evaluations, filters, { resultSource: source, candidateCount: candidates.length, evaluatedCandidateCount: evaluatedIds.size, coveragePending }, source === "fallback" ? "Showing instant matches while Jev reconnects." : undefined);
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });
     const details = errorDetails(error);
     console.error("[search] unexpected failure", { requestId, retryable: isRetryableProviderError(details), ...details, durationMs: Date.now() - started });
-    return response(emergencyEvaluations, emergencyFilters, "fallback", "Showing instant matches while Jev reconnects.");
+    return response(emergencyEvaluations, emergencyFilters, { resultSource: "fallback", candidateCount: emergencyEvaluations.length, evaluatedCandidateCount: 0, coveragePending: false }, "Showing instant matches while Jev reconnects.");
   } finally {
     if (acquired) active -= 1;
   }
