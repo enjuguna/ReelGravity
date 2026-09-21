@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { CATALOG_VERSION, movies } from "@/lib/movies";
 import { applyHardFilters } from "@/lib/ranking";
+import { parseQueryIntent, queryFilters } from "@/lib/query";
 import { createState, dimensions, errorDetails, evaluateStage, facetQuestions, scoreFromAnswer } from "@/lib/jev";
 import type { HardFilters } from "@/lib/types";
 
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
     const mode = body.mode === "duo" ? "duo" : "solo";
     const latest = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").at(-1)?.trim() ?? "" : "";
     const preferences = [latest(body.preferences), mode === "duo" ? latest(body.secondPreferences) : ""].filter(value => value.length >= 5);
-    const filters: HardFilters = (body.filters && typeof body.filters === "object" ? body.filters : {}) as HardFilters;
+    const suppliedFilters: HardFilters = (body.filters && typeof body.filters === "object" ? body.filters : {}) as HardFilters;
+    const queryIntent = parseQueryIntent(preferences.join(" "), movies);
+    const filters: HardFilters = { ...queryFilters(queryIntent), ...suppliedFilters };
     const requestedIds = Array.isArray(body.movieIds) ? body.movieIds.filter((id): id is number => typeof id === "number").slice(0, 6) : [];
     const candidates = applyHardFilters(movies, filters, new Set()).filter(movie => requestedIds.includes(movie.id));
     if (!preferences.length || !candidates.length) return NextResponse.json({ facetScores: {}, facetMovieIds: [], facetsComplete: true });

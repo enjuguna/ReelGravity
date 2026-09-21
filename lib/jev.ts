@@ -14,9 +14,12 @@ export function facetQuestions(candidates: Movie[]) {
 }
 
 export function errorDetails(error: unknown) {
-  const value = error as { name?: string; message?: string; statusCode?: number; generationId?: string; cause?: unknown; responseHeaders?: Record<string, string>; providerMetadata?: unknown };
-  const cause = value.cause as { statusCode?: number; message?: string; responseHeaders?: Record<string, string> } | undefined;
-  return { name: value.name, status: value.statusCode ?? cause?.statusCode, message: value.message ?? cause?.message, generationId: value.generationId, retryAfter: value.responseHeaders?.["retry-after"] ?? cause?.responseHeaders?.["retry-after"], providerMetadata: value.providerMetadata };
+  const value = error as { name?: string; message?: string; statusCode?: number; status?: number; generationId?: string; cause?: unknown; responseHeaders?: Record<string, string>; responseBody?: unknown; response?: { status?: number; headers?: Headers }; providerMetadata?: unknown };
+  const cause = value.cause as { name?: string; statusCode?: number; status?: number; message?: string; responseHeaders?: Record<string, string>; responseBody?: unknown; response?: { status?: number } } | undefined;
+  const responseHeaders = value.responseHeaders ?? cause?.responseHeaders;
+  const responseBody = value.responseBody ?? cause?.responseBody;
+  const status = value.statusCode ?? value.status ?? value.response?.status ?? cause?.statusCode ?? cause?.status ?? cause?.response?.status;
+  return { name: value.name ?? cause?.name ?? error?.constructor?.name, status, message: value.message ?? cause?.message ?? String(error), generationId: value.generationId, retryAfter: responseHeaders?.["retry-after"], responseBody, providerMetadata: value.providerMetadata };
 }
 
 export function isRetryableProviderError(details: ReturnType<typeof errorDetails>) {

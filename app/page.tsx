@@ -5,6 +5,8 @@ import { Bookmark, Check, Copy, Heart, RotateCcw, Sparkles, X } from "lucide-rea
 import Matter from "matter-js";
 import { movies } from "@/lib/movies";
 import { applyHardFilters, fallbackEligible } from "@/lib/ranking";
+import { parseQueryIntent, queryFilters } from "@/lib/query";
+import { boundedReleaseVelocity, createFixedStepClock, shouldWriteTransform } from "@/lib/physics-scene";
 import type { HardFilters, Movie, MovieEvaluation, MoodSnapshot } from "@/lib/types";
 
 type PosterPhase = "heap" | "lifting" | "result" | "returning";
@@ -25,23 +27,6 @@ const ENGINE_FRICTION_STATIC = 0.8;
 const ENGINE_RESTITUTION = 0.12;
 const ENGINE_FRICTION_AIR = 0.02;
 const ENGINE_DENSITY = 0.0015;
-
-function parseRuntime(text: string): HardFilters {
-  const between = text.match(/between\s*(\d+)\s*(?:and|-)\s*(\d+)\s*(?:min|minutes)?/i);
-  if (between) return { runtimeMin: Number(between[1]), runtimeMax: Number(between[2]) };
-  const max = text.match(/(?:under|below|at most|no more than|less than|<|<=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
-  const min = text.match(/(?:over|more than|at least|no less than|longer than|>|>=)\s*(\d+)\s*(?:min|minutes)?/i)?.[1];
-  const yearMin = text.match(/(?:past|after)\s*((?:19|20)\d{2})/i)?.[1];
-  const yearMinInclusive = text.match(/(?:since|from)\s*((?:19|20)\d{2})/i)?.[1];
-  const yearMax = text.match(/(?:before|prior to|earlier than)\s*((?:19|20)\d{2})/i)?.[1];
-  return {
-    ...(min ? { runtimeMin: Number(min) + 1 } : {}),
-    ...(max ? { runtimeMax: Number(max) } : {}),
-    ...(yearMin ? { yearMin: Number(yearMin) + 1 } : {}),
-    ...(yearMinInclusive ? { yearMin: Number(yearMinInclusive) } : {}),
-    ...(yearMax ? { yearMax: Number(yearMax) - 1 } : {}),
-  };
-}
 
 function filterSummary(filters: HardFilters) {
   const values = [filters.genre, filters.runtimeMax ? `under ${filters.runtimeMax} min` : "", filters.runtimeMin ? `from ${filters.runtimeMin} min` : "", filters.yearMin ? `from ${filters.yearMin}` : "", filters.yearMax ? `through ${filters.yearMax}` : ""].filter(Boolean);
@@ -90,6 +75,7 @@ export default function Home() {
   const boundsRef = useRef<Matter.Body[]>([]);
   const phasesRef = useRef(new Map<number, PosterPhase>());
   const motionsRef = useRef(new Map<number, PosterMotion>());
+  const renderedRef = useRef(new Map<number, { x:number; y:number; angle:number; phase:PosterPhase }>());
   const shortlistedRef = useRef<number[]>([]);
   const transitionRef = useRef(0);
   const dragRef = useRef<{ constraint: Matter.Constraint; lastX: number; lastY: number; lastTime: number; vx: number; vy: number } | null>(null);
@@ -177,7 +163,7 @@ export default function Home() {
         const now = next.has(id);
         if (now && !was) { phasesRef.current.set(id, "lifting"); setCollision(body, false); motionsRef.current.set(id, { phase: "lifting", target, transitionId }); Matter.Sleeping.set(body, false); }
         else if (now) { phasesRef.current.set(id, "result"); setCollision(body, false); motionsRef.current.set(id, { phase: "result", target, transitionId }); }
-        else if (!now && was) { phasesRef.current.set(id, "returning"); setCollision(body, true); Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, { x: Math.max(-3, Math.min(3, body.velocity.x)), y: 1.8 }); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); }
+        else if (!now && was) { phasesRef.current.set(id, "returning"); setCollision(body, true); Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, boundedReleaseVelocity(body, body.velocity.x, 1.8)); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); }
       });
       shortlistedRef.current = ids;
     };
@@ -185,20 +171,24 @@ export default function Home() {
     coordinator(liftedIds);
     syncDismissed();
     let previousWidth = width;
-    const observer = new ResizeObserver(() => { const rect = world.getBoundingClientRect(); const nextWidth = rect.width; const scale = nextWidth / Math.max(1, previousWidth); bodiesRef.current.forEach(body => { Matter.Body.scale(body, scale, scale); Matter.Body.setPosition(body, { x: Math.max(POSTER_WIDTH / 2, Math.min(nextWidth - POSTER_WIDTH / 2, body.position.x * scale)), y: Math.min(rect.height - POSTER_HEIGHT / 2, body.position.y) }); }); width = nextWidth; height = rect.height; Matter.Body.setPosition(left, { x: -24, y: height / 2 }); Matter.Body.setPosition(right, { x: width + 24, y: height / 2 }); Matter.Body.setPosition(floor, { x: width / 2, y: height + 14 }); previousWidth = nextWidth; });
+    const observer = new ResizeObserver(() => { const rect = world.getBoundingClientRect(); const nextWidth = rect.width; const scale = nextWidth / Math.max(1, previousWidth); bodiesRef.current.forEach(body => { const x = body.position.x * scale; Matter.Body.setPosition(body, { x: Math.max(POSTER_WIDTH / 2, Math.min(nextWidth - POSTER_WIDTH / 2, x)), y: Math.min(rect.height - POSTER_HEIGHT / 2, body.position.y) }); }); width = nextWidth; height = rect.height; Matter.Body.setPosition(left, { x: -24, y: height / 2 }); Matter.Body.setPosition(right, { x: width + 24, y: height / 2 }); Matter.Body.setPosition(floor, { x: width / 2, y: height + 14 }); previousWidth = nextWidth; });
     observer.observe(world);
     let frame = 0;
-    let last = performance.now();
-    let accumulator = 0;
+    const clock = createFixedStepClock(STEP_MS, 4);
+    const onVisibility = () => { if (!document.hidden) clock.reset(performance.now()); };
+    document.addEventListener("visibilitychange", onVisibility);
     const tick = (now: number) => {
-      const elapsed = Math.min(50, now - last); last = now; accumulator = Math.min(accumulator + elapsed, STEP_MS * 5);
-      let steps = 0; while (!reducedRef.current && accumulator >= STEP_MS && steps < 5) { Matter.Engine.update(engine, STEP_MS); accumulator -= STEP_MS; steps += 1; }
-      bodiesRef.current.forEach((body, id) => { const motion = motionsRef.current.get(id); const element = posterRefs.current.get(id); if (!element) return; if (motion?.target && (motion.phase === "lifting" || motion.phase === "result")) { Matter.Body.setStatic(body, true); const dx = motion.target.x + POSTER_WIDTH / 2 - body.position.x; const dy = motion.target.y + POSTER_HEIGHT / 2 - body.position.y; const rate = motion.phase === "lifting" ? 0.105 : 0.16; Matter.Body.setPosition(body, { x: body.position.x + dx * rate, y: body.position.y + dy * rate }); Matter.Body.setAngle(body, body.angle + (motion.target.angle * Math.PI / 180 - body.angle) * 0.12); if (Math.abs(dx) < 1.5 && Math.abs(dy) < 1.5) { Matter.Body.setPosition(body, { x: motion.target.x + POSTER_WIDTH / 2, y: motion.target.y + POSTER_HEIGHT / 2 }); phasesRef.current.set(id, "result"); motionsRef.current.set(id, { ...motion, phase: "result" }); } } else if (motion?.phase === "returning" && body.position.y > height - POSTER_HEIGHT * 1.8 && Math.abs(body.velocity.y) < 0.5) { phasesRef.current.set(id, "heap"); motionsRef.current.delete(id); setCollision(body, true); }
-        element.dataset.phase = phasesRef.current.get(id) ?? "heap"; element.style.left = "0"; element.style.top = "0"; element.style.transform = `translate3d(${body.position.x - POSTER_WIDTH / 2}px, ${body.position.y - POSTER_HEIGHT / 2}px, 0) rotate(${body.angle}rad)`; });
+      clock.advance(now, step => Matter.Engine.update(engine, step), reducedRef.current || document.hidden);
+      bodiesRef.current.forEach((body, id) => { const motion = motionsRef.current.get(id); const element = posterRefs.current.get(id); if (!element) return; if (motion?.target && (motion.phase === "lifting" || motion.phase === "result")) { if (!body.isStatic) Matter.Body.setStatic(body, true); const dx = motion.target.x + POSTER_WIDTH / 2 - body.position.x; const dy = motion.target.y + POSTER_HEIGHT / 2 - body.position.y; const rate = motion.phase === "lifting" ? 0.105 : 0.16; if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) Matter.Body.setPosition(body, { x: body.position.x + dx * rate, y: body.position.y + dy * rate }); const angleTarget = motion.target.angle * Math.PI / 180; if (Math.abs(angleTarget - body.angle) > 0.001) Matter.Body.setAngle(body, body.angle + (angleTarget - body.angle) * 0.12); if (Math.abs(dx) < 1.5 && Math.abs(dy) < 1.5) { Matter.Body.setPosition(body, { x: motion.target.x + POSTER_WIDTH / 2, y: motion.target.y + POSTER_HEIGHT / 2 }); phasesRef.current.set(id, "result"); motionsRef.current.set(id, { ...motion, phase: "result" }); } } else if (motion?.phase === "returning" && body.position.y > height - POSTER_HEIGHT * 1.8 && Math.abs(body.velocity.y) < 0.5) { phasesRef.current.set(id, "heap"); motionsRef.current.delete(id); setCollision(body, true); }
+        const phase = phasesRef.current.get(id) ?? "heap";
+        element.dataset.phase = phase;
+        const previous = renderedRef.current.get(id);
+        if (shouldWriteTransform(previous, body, phase)) { element.style.left = "0"; element.style.top = "0"; element.style.transform = `translate3d(${body.position.x - POSTER_WIDTH / 2}px, ${body.position.y - POSTER_HEIGHT / 2}px, 0) rotate(${body.angle}rad)`; renderedRef.current.set(id, { x: body.position.x, y: body.position.y, angle: body.angle, phase }); }
+      });
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); if (dragRef.current) Matter.World.remove(engine.world, dragRef.current.constraint); Matter.Engine.clear(engine); bodiesRef.current.clear(); phasesRef.current.clear(); motionsRef.current.clear(); boundsRef.current = []; engineRef.current = null; };
+    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", onVisibility); cancelAnimationFrame(frame); if (dragRef.current) Matter.World.remove(engine.world, dragRef.current.constraint); Matter.Engine.clear(engine); bodiesRef.current.clear(); phasesRef.current.clear(); motionsRef.current.clear(); renderedRef.current.clear(); boundsRef.current = []; engineRef.current = null; };
     // The Matter world is intentionally mounted once; searches are coordinated below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -216,7 +206,7 @@ export default function Home() {
     const previous = new Set(shortlistedRef.current);
     const transitionId = ++transitionRef.current;
     liftedIds.forEach((id, index) => { const body = bodiesRef.current.get(id); if (!body) return; const col = index % columns; const row = Math.floor(index / columns); const target = { x: shelfRect.left - worldRect.left + 16 + col * (POSTER_WIDTH + gap), y: shelfRect.top - worldRect.top + 16 + row * (POSTER_HEIGHT + gap), angle: ((id * 7) % 9) - 4 }; const phase: PosterPhase = previous.has(id) ? "result" : "lifting"; phasesRef.current.set(id, phase); body.collisionFilter.mask = 0; Matter.Body.setStatic(body, true); motionsRef.current.set(id, { phase, target, transitionId }); });
-    bodiesRef.current.forEach((body, id) => { if (next.has(id)) return; if (previous.has(id)) { phasesRef.current.set(id, "returning"); body.collisionFilter.mask = 0xffffffff; Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, { x: Math.max(-3, Math.min(3, body.velocity.x)), y: 1.8 }); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); } });
+    bodiesRef.current.forEach((body, id) => { if (next.has(id)) return; if (previous.has(id)) { phasesRef.current.set(id, "returning"); body.collisionFilter.mask = 0xffffffff; Matter.Body.setStatic(body, false); Matter.Body.setVelocity(body, boundedReleaseVelocity(body, body.velocity.x, 1.8)); Matter.Sleeping.set(body, false); motionsRef.current.set(id, { phase: "returning", transitionId }); } });
     shortlistedRef.current = liftedIds;
   }, [liftedIds]);
 
@@ -275,7 +265,7 @@ export default function Home() {
     const drag = dragRef.current;
     if (!engine || !drag) return;
     const body = drag.constraint.bodyA;
-    if (body) Matter.Body.setVelocity(body, { x: drag.vx, y: drag.vy });
+    if (body) Matter.Body.setVelocity(body, boundedReleaseVelocity(body, drag.vx, drag.vy));
     Matter.World.remove(engine.world, drag.constraint);
     dragRef.current = null;
   }, []);
@@ -284,7 +274,8 @@ export default function Home() {
     const query = requested?.query ?? prompt.trim();
     const other = requested?.other ?? second.trim();
     if (query.length < 5 && other.length < 5) { setStatus("Type at least five characters, then press Enter to search."); return; }
-    const nextFilters = requested?.filters ?? { ...filters, ...parseRuntime(query) };
+    const intent = parseQueryIntent(`${query} ${other}`.trim(), movies);
+    const nextFilters = requested?.filters ?? { ...filters, ...queryFilters(intent) };
     const mode = requested?.mode ?? session.mode;
     const cacheKey = JSON.stringify({ query, other, mode, filters: nextFilters, excluded: session.dismissedIds });
     const requestId = ++requestRef.current;
@@ -299,18 +290,25 @@ export default function Home() {
     }
     const instant = fallbackEligible(candidates, `${query} ${other}`.trim());
     const instantEvaluations = Object.fromEntries(instant.evaluations.map(evaluation => [evaluation.movieId, evaluation]));
-    setFacetsComplete(false);
-    setFacetMovieIds([]);
-    setResultSource("fallback");
-    setDisplayedQuery(query);
-    setDisplayedFilters(nextFilters);
-    setResultFreshness(instant.ids.length ? "fresh" : "empty");
-    setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: instantEvaluations, shortlistedIds: instant.ids }));
-    setStatus(instant.ids.length ? `${instant.ids.length} instant matches ready. Jev is refining…` : "No films match those constraints.");
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
     setFilters(nextFilters);
+    let fallbackShown = false;
+    const showFallback = (message = instant.ids.length ? "Showing instant matches while Jev refines the ranking." : "No films match those constraints.") => {
+      if (fallbackShown || requestId !== requestRef.current) return;
+      fallbackShown = true;
+      setFacetsComplete(false);
+      setFacetMovieIds([]);
+      setResultSource("fallback");
+      setDisplayedQuery(query);
+      setDisplayedFilters(nextFilters);
+      setResultFreshness(instant.ids.length ? "fresh" : "empty");
+      setSession(previous => ({ ...previous, preferences: query ? [query] : [], secondPreferences: other ? [other] : [], filters: nextFilters, evaluations: instantEvaluations, shortlistedIds: instant.ids }));
+      setStatus(message);
+    };
+    const accuracyTimer = window.setTimeout(() => showFallback(), 2500);
+    setStatus(previous => previous ? `${previous} Jev is checking…` : "Jev is checking the best matches…");
     try {
       const response = await fetch("/api/evaluate", { method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]), body: JSON.stringify({ preferences: query ? [query] : [], secondPreferences: other ? [other] : [], mode, filters: nextFilters, excludedIds: session.dismissedIds }) });
       const data = await response.json();
@@ -322,6 +320,7 @@ export default function Home() {
       const detailedIds = Array.isArray(data.facetMovieIds) ? data.facetMovieIds as number[] : [];
       const detailMessage = typeof data.detailMessage === "string" ? data.detailMessage : undefined;
       const source = data.resultSource === "mixed" || data.resultSource === "fallback" ? data.resultSource : "jev";
+      fallbackShown = true;
       setFacetsComplete(complete);
       setFacetMovieIds(detailedIds);
       setResultSource(source);
@@ -334,10 +333,9 @@ export default function Home() {
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (requestId === requestRef.current) {
-        setResultSource("fallback");
-        setStatus(instant.ids.length ? "Showing instant matches while Jev reconnects." : "No films match those constraints.");
+        showFallback(instant.ids.length ? "Showing instant matches while Jev reconnects." : "No films match those constraints.");
       }
-    } finally { if (requestId === requestRef.current) setLoading(false); }
+    } finally { window.clearTimeout(accuracyTimer); if (requestId === requestRef.current) setLoading(false); }
   }, [filters, prompt, second, session.dismissedIds, session.mode]);
 
   const loadFacets = useCallback(async (movieId: number) => {

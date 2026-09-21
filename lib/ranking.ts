@@ -15,23 +15,31 @@ const INTENT_TAGS: Record<string, string[]> = {
   adventurous: ["adventurous", "kinetic", "discovery"],
 };
 
+type CatalogIndexEntry = { title: Set<string>; genres: Set<string>; metadata: Set<string>; overview: Set<string> };
+const catalogIndex = new Map<number, CatalogIndexEntry>();
+
 export const PRIMARY_CANDIDATE_LIMIT = 30;
 
 function tokens(value: string) {
   return value.toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length > 2 && !STOP_WORDS.has(token));
 }
 
+function indexMovie(movie: Movie) {
+  const existing = catalogIndex.get(movie.id);
+  if (existing) return existing;
+  const entry = { title: new Set(tokens(movie.title)), genres: new Set(movie.genres.flatMap(tokens)), metadata: new Set([...movie.mood, ...movie.pace, ...movie.theme].flatMap(tokens)), overview: new Set(tokens(movie.overview)) };
+  catalogIndex.set(movie.id, entry);
+  return entry;
+}
+
 export function rankLocally(candidates: Movie[], query: string): MovieEvaluation[] {
   const queryTokens = tokens(query);
   const inferredTags = new Set(queryTokens.flatMap(token => INTENT_TAGS[token] ?? []));
   const scored = candidates.map(movie => {
-    const titleTokens = new Set(tokens(movie.title));
-    const genreTokens = new Set(movie.genres.flatMap(tokens));
-    const metadataTokens = new Set([...movie.mood, ...movie.pace, ...movie.theme].flatMap(tokens));
-    const overviewTokens = new Set(tokens(movie.overview));
+    const index = indexMovie(movie);
     const overlap = (set: Set<string>) => queryTokens.length ? queryTokens.filter(token => set.has(token)).length / queryTokens.length : 0;
-    const tagFit = inferredTags.size ? [...inferredTags].filter(tag => [...metadataTokens].includes(tag)).length / inferredTags.size : 0;
-    const raw = queryTokens.length ? 0.48 + overlap(titleTokens) * 0.25 + overlap(genreTokens) * 0.2 + overlap(metadataTokens) * 0.2 + overlap(overviewTokens) * 0.08 + tagFit * 0.18 : 0.5;
+    const tagFit = inferredTags.size ? [...inferredTags].filter(tag => index.metadata.has(tag)).length / inferredTags.size : 0;
+    const raw = queryTokens.length ? 0.48 + overlap(index.title) * 0.25 + overlap(index.genres) * 0.2 + overlap(index.metadata) * 0.2 + overlap(index.overview) * 0.08 + tagFit * 0.18 : 0.5;
     const overall = Math.max(0, Math.min(1, raw));
     return { movieId: movie.id, overall, mood: overall, pace: overall, theme: overall, eligible: overall >= 0.6 } satisfies MovieEvaluation;
   });
@@ -45,8 +53,7 @@ export function selectPrimaryCandidates(candidates: Movie[], query: string) {
   const exact = ranked.filter(item => {
     const movie = candidates.find(candidate => candidate.id === item.movieId);
     if (!movie) return false;
-    const titleTokens = tokens(movie.title);
-    return titleTokens.some(token => queryTokens.has(token));
+    return [...indexMovie(movie).title].some(token => queryTokens.has(token));
   });
   const chosen = new Set<number>();
   const primary: Movie[] = [];
